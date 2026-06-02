@@ -11,6 +11,7 @@ const NAV = [
   { href: "/posts",       label: "Posts",          icon: "🌸" },
   { href: "/communities", label: "Communities",   icon: "🏘️" },
   { href: "/reports",       label: "Reports",        icon: "🚨" },
+  { href: "/streaks",       label: "Streaks",        icon: "🔥" },
   { href: "/announcements", label: "Announcements", icon: "📣" },
   { href: "/settings",      label: "Settings",      icon: "⚙️" },
 ]
