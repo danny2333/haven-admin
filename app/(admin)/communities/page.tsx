@@ -3,14 +3,16 @@ import { revalidatePath } from "next/cache"
 
 async function deleteCommunity(id: string) {
   "use server"
-  await supabase.from("community_post_votes").delete().in(
-    "post_id",
-    (await supabase.from("community_posts").select("id").eq("community_id", id)).data?.map(p => p.id) ?? []
-  )
-  await supabase.from("community_replies").delete().in(
-    "post_id",
-    (await supabase.from("community_posts").select("id").eq("community_id", id)).data?.map(p => p.id) ?? []
-  )
+  const { data: posts } = await supabase
+    .from("community_posts")
+    .select("id")
+    .eq("community_id", id)
+  const postIds = posts?.map(p => p.id) ?? []
+
+  if (postIds.length > 0) {
+    await supabase.from("community_post_votes").delete().in("post_id", postIds)
+    await supabase.from("community_replies").delete().in("post_id", postIds)
+  }
   await supabase.from("community_posts").delete().eq("community_id", id)
   await supabase.from("community_members").delete().eq("community_id", id)
   await supabase.from("community_tags").delete().eq("community_id", id)
@@ -19,23 +21,31 @@ async function deleteCommunity(id: string) {
 }
 
 export default async function Communities() {
-  const { data: communities } = await supabase
+  const { data: communities, error } = await supabase
     .from("communities")
-    .select("id, name, description, category, is_private, emoji, created_at, profiles(username)")
+    .select("id, name, description, category, is_private, emoji, created_by, created_at")
     .order("created_at", { ascending: false })
+
+  const creatorIds = [...new Set((communities ?? []).map(c => c.created_by).filter(Boolean))]
+
+  const { data: profiles } = creatorIds.length > 0
+    ? await supabase.from("profiles").select("id, username").in("id", creatorIds)
+    : { data: [] }
+
+  const profileMap: Record<string, string> = {}
+  for (const p of profiles ?? []) {
+    profileMap[p.id] = p.username
+  }
 
   const ids = communities?.map(c => c.id) ?? []
 
-  const { data: memberCounts } = await supabase
-    .from("community_members")
-    .select("community_id")
-    .in("community_id", ids)
-    .eq("status", "approved")
+  const { data: memberCounts } = ids.length > 0
+    ? await supabase.from("community_members").select("community_id").in("community_id", ids).eq("status", "approved")
+    : { data: [] }
 
-  const { data: postCounts } = await supabase
-    .from("community_posts")
-    .select("community_id")
-    .in("community_id", ids)
+  const { data: postCounts } = ids.length > 0
+    ? await supabase.from("community_posts").select("community_id").in("community_id", ids)
+    : { data: [] }
 
   const memberMap: Record<string, number> = {}
   const postMap: Record<string, number> = {}
@@ -90,7 +100,7 @@ export default async function Communities() {
                   )}
                 </td>
                 <td className="px-6 py-4 text-gray-400">
-                  @{(c.profiles as any)?.username ?? "unknown"}
+                  {profileMap[c.created_by] ? `@${profileMap[c.created_by]}` : "—"}
                 </td>
                 <td className="px-6 py-4 text-gray-300 font-semibold">
                   {memberMap[c.id] ?? 0}
