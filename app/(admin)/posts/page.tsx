@@ -3,6 +3,23 @@ import { revalidatePath } from "next/cache"
 
 async function deletePost(id: string) {
   "use server"
+  // Fetch image_url before deleting so we can clean storage
+  const { data: post } = await supabase.from("posts").select("image_url").eq("id", id).single()
+  if (post?.image_url) {
+    const extractUrls = (raw: string) => {
+      try { const p = JSON.parse(raw); if (Array.isArray(p)) return p.filter((u: string) => u.startsWith("http")) } catch {}
+      return raw.startsWith("http") ? [raw] : []
+    }
+    const urls = extractUrls(post.image_url)
+    await Promise.all(urls.map(async (url: string) => {
+      const marker = "/storage/v1/object/public/Posts/"
+      const idx = url.indexOf(marker)
+      if (idx !== -1) {
+        const filePath = url.slice(idx + marker.length).split("?")[0]
+        await supabase.storage.from("Posts").remove([filePath])
+      }
+    }))
+  }
   await supabase.from("posts").delete().eq("id", id)
   revalidatePath("/posts")
 }
