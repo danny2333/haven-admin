@@ -36,7 +36,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <p className="text-xs text-gray-500 mt-0.5">admin</p>
         </div>
 
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
+        <nav className="flex-1 px-3 py-4 flex flex-col gap-1 overflow-y-auto">
           {NAV.map(item => {
             const active = pathname === item.href
             return (
