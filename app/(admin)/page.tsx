@@ -1,12 +1,17 @@
 import { supabase } from "@/lib/supabase"
 
 async function getStats() {
-  const [users, posts, waitlist, requests, codes] = await Promise.all([
+  const todayStart = new Date()
+  todayStart.setUTCHours(0, 0, 0, 0)
+
+  const [users, posts, waitlist, requests, codes, dailyToday, activeStreaks] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.from("posts").select("id", { count: "exact", head: true }),
     supabase.from("waitlist").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("invite_codes").select("id", { count: "exact", head: true }).is("used_by", null),
+    supabase.from("daily_posts").select("id", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).gt("current_streak", 0),
   ])
   return {
     users: users.count ?? 0,
@@ -14,6 +19,8 @@ async function getStats() {
     waitlist: waitlist.count ?? 0,
     requests: requests.count ?? 0,
     codesLeft: codes.count ?? 0,
+    dailyToday: dailyToday.count ?? 0,
+    activeStreaks: activeStreaks.count ?? 0,
   }
 }
 
@@ -21,11 +28,12 @@ export default async function Dashboard() {
   const stats = await getStats()
 
   const cards = [
-    { label: "Total Users",        value: stats.users,     color: "text-[#e378ac]" },
-    { label: "Total Posts",        value: stats.posts,     color: "text-purple-400" },
-    { label: "Waitlist Pending",   value: stats.waitlist,  color: "text-yellow-400" },
-    { label: "Code Requests",      value: stats.requests,  color: "text-blue-400" },
-    { label: "Unused Codes Left",  value: stats.codesLeft, color: "text-green-400" },
+    { label: "Total Users",        value: stats.users,        color: "text-[#e378ac]" },
+    { label: "Total Posts",        value: stats.posts,        color: "text-purple-400" },
+    { label: "Daily Posts Today",  value: stats.dailyToday,   color: "text-orange-400" },
+    { label: "Active Streaks",     value: stats.activeStreaks, color: "text-yellow-400" },
+    { label: "Waitlist Pending",   value: stats.waitlist,     color: "text-blue-400" },
+    { label: "Unused Codes Left",  value: stats.codesLeft,    color: "text-green-400" },
   ]
 
   return (
