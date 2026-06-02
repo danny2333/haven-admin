@@ -11,34 +11,22 @@ export default async function Requests() {
   const { data: requests } = await supabase
     .from("code_requests")
     .select(`
-      id, status, requested_at, eligible_at, approved_at,
+      id, status, requested_at,
       profile:user_id(username, email)
     `)
     .order("requested_at", { ascending: false })
 
   const pending = requests?.filter(r => r.status === "pending") ?? []
-  const eligible = pending.filter(r => new Date(r.eligible_at) <= new Date())
 
   return (
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Code Requests</h2>
-      <p className="text-gray-500 text-sm mb-6">
-        {pending.length} pending · {eligible.length} eligible now
-      </p>
-
-      {eligible.length > 0 && (
-        <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-2xl px-6 py-4 mb-6">
-          <p className="text-yellow-400 font-bold text-sm">
-            ⚡ {eligible.length} request{eligible.length !== 1 ? "s" : ""} ready to approve
-          </p>
-        </div>
-      )}
+      <p className="text-gray-500 text-sm mb-6">{pending.length} pending</p>
 
       <div className="flex flex-col gap-3">
         {requests?.map(r => {
           const profile = r.profile as any
           const daysWaiting = Math.floor((Date.now() - new Date(r.requested_at).getTime()) / 86400000)
-          const isEligible = new Date(r.eligible_at) <= new Date()
 
           return (
             <div key={r.id} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-6 flex items-center justify-between gap-4">
@@ -46,8 +34,7 @@ export default async function Requests() {
                 <p className="font-bold text-white">@{profile?.username}</p>
                 <p className="text-gray-500 text-sm">{profile?.email}</p>
                 <p className="text-gray-600 text-xs mt-1">
-                  Requested {daysWaiting} day{daysWaiting !== 1 ? "s" : ""} ago
-                  {isEligible ? <span className="text-green-400 ml-2">· eligible</span> : <span className="text-gray-600 ml-2">· not eligible yet</span>}
+                  Requested {daysWaiting === 0 ? "today" : `${daysWaiting} day${daysWaiting !== 1 ? "s" : ""} ago`}
                 </p>
               </div>
 
