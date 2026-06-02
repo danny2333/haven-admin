@@ -1,8 +1,5 @@
 import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
-import { Resend } from "resend"
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 async function banFromReport(reportId: string, userId: string) {
   "use server"
@@ -12,35 +9,6 @@ async function banFromReport(reportId: string, userId: string) {
     banned_at: new Date().toISOString(),
   }).eq("id", userId)
   await supabase.from("reports").update({ status: "resolved", action: "banned" }).eq("id", reportId)
-  revalidatePath("/reports")
-}
-
-async function warnUser(reportId: string, userId: string) {
-  "use server"
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("email, username")
-    .eq("id", userId)
-    .single()
-
-  if (profile?.email) {
-    await resend.emails.send({
-      from: "Haven <noreply@haven.app>",
-      to: profile.email,
-      subject: "A warning regarding your Haven account",
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0f0f0f;color:#e5e5e5;border-radius:12px;">
-          <h2 style="color:#e378ac;margin-bottom:8px;">Haven Warning Notice</h2>
-          <p>Hi <strong>@${profile.username}</strong>,</p>
-          <p>Your account has received a report from another user for behaviour that violates Haven's community guidelines.</p>
-          <p>This is a formal warning. If this behaviour continues your account may be permanently banned.</p>
-          <p style="color:#888;font-size:13px;margin-top:24px;">— The Haven Team</p>
-        </div>
-      `,
-    })
-  }
-
-  await supabase.from("reports").update({ status: "resolved", action: "warned" }).eq("id", reportId)
   revalidatePath("/reports")
 }
 
@@ -146,11 +114,6 @@ export default async function Reports() {
                     <form action={banFromReport.bind(null, r.id, r.reported_user_id)}>
                       <button className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold px-4 py-2.5 rounded-xl transition">
                         Ban User
-                      </button>
-                    </form>
-                    <form action={warnUser.bind(null, r.id, r.reported_user_id)}>
-                      <button className="w-full bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 text-xs font-bold px-4 py-2.5 rounded-xl transition">
-                        Send Warning
                       </button>
                     </form>
                     <form action={dismissReport.bind(null, r.id)}>
