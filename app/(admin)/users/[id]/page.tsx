@@ -10,6 +10,8 @@ async function banUser(userId: string, reason: string) {
     ban_reason: reason,
     banned_at: new Date().toISOString(),
   }).eq("id", userId)
+  // Disable their Supabase Auth account so they can't log back in
+  await supabase.auth.admin.updateUserById(userId, { ban_duration: "876600h" })
   revalidatePath(`/users/${userId}`)
   revalidatePath("/users")
 }
@@ -21,6 +23,8 @@ async function unbanUser(userId: string) {
     ban_reason: null,
     banned_at: null,
   }).eq("id", userId)
+  // Re-enable their Supabase Auth account
+  await supabase.auth.admin.updateUserById(userId, { ban_duration: "none" })
   revalidatePath(`/users/${userId}`)
   revalidatePath("/users")
 }
