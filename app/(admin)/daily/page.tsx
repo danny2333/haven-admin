@@ -19,22 +19,31 @@ export default async function Daily() {
     .gt("current_streak", 0)
     .order("current_streak", { ascending: false })
 
-  // Last 7 days daily post counts
-  const days: { label: string; date: string; count: number }[] = []
-  for (let i = 6; i >= 0; i--) {
+  // Last 7 days daily post counts — run all 7 queries in parallel
+  const dayRanges = Array.from({ length: 7 }, (_, i) => {
+    const offset = 6 - i
     const d = new Date(now)
-    d.setUTCDate(d.getUTCDate() - i)
+    d.setUTCDate(d.getUTCDate() - offset)
     d.setUTCHours(0, 0, 0, 0)
     const end = new Date(d)
     end.setUTCHours(23, 59, 59, 999)
-    const { count } = await supabase
-      .from("daily_posts")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", d.toISOString())
-      .lte("created_at", end.toISOString())
-    const label = i === 0 ? "Today" : i === 1 ? "Yesterday" : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
-    days.push({ label, date: d.toISOString(), count: count ?? 0 })
-  }
+    const label = offset === 0 ? "Today" : offset === 1 ? "Yesterday"
+      : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    return { label, start: d.toISOString(), end: end.toISOString() }
+  })
+
+  const dayCounts = await Promise.all(
+    dayRanges.map(({ start, end }) =>
+      supabase.from("daily_posts").select("id", { count: "exact", head: true })
+        .gte("created_at", start).lte("created_at", end)
+    )
+  )
+
+  const days = dayRanges.map(({ label, start }, i) => ({
+    label,
+    date: start,
+    count: dayCounts[i].count ?? 0,
+  }))
 
   const maxCount = Math.max(...days.map(d => d.count), 1)
 

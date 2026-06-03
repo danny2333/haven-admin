@@ -21,10 +21,15 @@ async function deleteCommunity(id: string) {
 }
 
 export default async function Communities() {
-  const { data: communities, error } = await supabase
-    .from("communities")
-    .select("id, name, description, category, is_private, emoji, created_by, created_at")
-    .order("created_at", { ascending: false })
+  const [{ data: communities, error }, { count: totalCount }] = await Promise.all([
+    supabase
+      .from("communities")
+      .select("id, name, description, category, is_private, emoji, created_by, created_at")
+      .order("created_at", { ascending: false }),
+    supabase.from("communities").select("id", { count: "exact", head: true }),
+  ])
+
+  if (error) console.error("Communities query error:", error)
 
   const creatorIds = [...new Set((communities ?? []).map(c => c.created_by).filter(Boolean))]
 
@@ -60,7 +65,7 @@ export default async function Communities() {
   return (
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Communities</h2>
-      <p className="text-gray-500 text-sm mb-6">{communities?.length ?? 0} total</p>
+      <p className="text-gray-500 text-sm mb-6">{totalCount ?? 0} total</p>
 
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden">
         <table className="w-full text-sm">

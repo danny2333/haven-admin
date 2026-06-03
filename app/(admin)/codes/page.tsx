@@ -18,25 +18,33 @@ async function generateCodes(count: number) {
 }
 
 export default async function Codes() {
-  const { data: codes } = await supabase
-    .from("invite_codes")
-    .select(`
-      id, code, created_at, used_at,
-      creator:created_by(username),
-      redeemer:used_by(username)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(200)
+  const [
+    { data: codes, error },
+    { count: unusedCount },
+    { count: usedCount },
+  ] = await Promise.all([
+    supabase
+      .from("invite_codes")
+      .select(`id, code, created_at, used_at, creator:created_by(username), redeemer:used_by(username)`)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase.from("invite_codes").select("id", { count: "exact", head: true }).is("used_by", null),
+    supabase.from("invite_codes").select("id", { count: "exact", head: true }).not("used_by", "is", null),
+  ])
 
-  const unused = codes?.filter(c => !c.redeemer).length ?? 0
-  const used = codes?.filter(c => c.redeemer).length ?? 0
+  if (error) console.error("Codes query error:", error)
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-black text-white mb-1">Invite Codes</h2>
-          <p className="text-gray-500 text-sm">{unused} unused · {used} used</p>
+          <p className="text-gray-500 text-sm">
+            {unusedCount ?? 0} unused · {usedCount ?? 0} used
+            {(unusedCount ?? 0) + (usedCount ?? 0) > 200 && (
+              <span className="text-gray-600"> · showing 200 most recent</span>
+            )}
+          </p>
         </div>
         <div className="flex gap-2">
           <form action={generateCodes.bind(null, 10)}>

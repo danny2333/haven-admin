@@ -25,16 +25,23 @@ async function deletePost(id: string) {
 }
 
 export default async function Posts() {
-  const { data: posts } = await supabase
-    .from("posts")
-    .select("id, content, is_anonymous, category, created_at, profiles(username)")
-    .order("created_at", { ascending: false })
-    .limit(100)
+  const [{ data: posts }, { count: totalCount }] = await Promise.all([
+    supabase
+      .from("posts")
+      .select("id, content, is_anonymous, category, created_at, profiles(username)")
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("posts")
+      .select("id", { count: "exact", head: true }),
+  ])
 
   return (
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Posts</h2>
-      <p className="text-gray-500 text-sm mb-6">{posts?.length ?? 0} most recent</p>
+      <p className="text-gray-500 text-sm mb-6">
+        {totalCount ?? 0} total · showing {posts?.length ?? 0} most recent
+      </p>
 
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden">
         <table className="w-full text-sm">

@@ -19,10 +19,20 @@ async function dismissReport(reportId: string) {
 }
 
 export default async function Reports() {
-  const { data: reports } = await supabase
-    .from("reports")
-    .select("id, reason, context, created_at, status, action, reporter_id, reported_user_id, reported_post_id")
-    .order("created_at", { ascending: false })
+  const [
+    { data: reports, error },
+    { count: pendingCount },
+    { count: resolvedCount },
+  ] = await Promise.all([
+    supabase
+      .from("reports")
+      .select("id, reason, context, created_at, status, action, reporter_id, reported_user_id, reported_post_id")
+      .order("created_at", { ascending: false }),
+    supabase.from("reports").select("id", { count: "exact", head: true }).or("status.is.null,status.eq.pending"),
+    supabase.from("reports").select("id", { count: "exact", head: true }).not("status", "is", null).neq("status", "pending"),
+  ])
+
+  if (error) console.error("Reports query error:", error)
 
   const userIds = [...new Set([
     ...(reports ?? []).map(r => r.reporter_id),
@@ -38,14 +48,14 @@ export default async function Reports() {
     profileMap[p.id] = { username: p.username, email: p.email }
   }
 
-  const pending = reports?.filter(r => !r.status || r.status === "pending") ?? []
+  const pending  = reports?.filter(r => !r.status || r.status === "pending") ?? []
   const resolved = reports?.filter(r => r.status && r.status !== "pending") ?? []
 
   return (
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Reports</h2>
       <p className="text-gray-500 text-sm mb-6">
-        {pending.length} pending · {resolved.length} resolved
+        {pendingCount ?? 0} pending · {resolvedCount ?? 0} resolved
       </p>
 
       {pending.length === 0 && (

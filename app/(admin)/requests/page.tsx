@@ -8,20 +8,20 @@ async function updateRequest(id: string, status: string) {
 }
 
 export default async function Requests() {
-  const { data: requests } = await supabase
-    .from("code_requests")
-    .select(`
-      id, status, requested_at,
-      profile:user_id(username, email)
-    `)
-    .order("requested_at", { ascending: false })
+  const [{ data: requests, error }, { count: pendingCount }] = await Promise.all([
+    supabase
+      .from("code_requests")
+      .select(`id, status, requested_at, profile:user_id(username, email)`)
+      .order("requested_at", { ascending: false }),
+    supabase.from("code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+  ])
 
-  const pending = requests?.filter(r => r.status === "pending") ?? []
+  if (error) console.error("Requests query error:", error)
 
   return (
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Code Requests</h2>
-      <p className="text-gray-500 text-sm mb-6">{pending.length} pending</p>
+      <p className="text-gray-500 text-sm mb-6">{pendingCount ?? 0} pending</p>
 
       <div className="flex flex-col gap-3">
         {requests?.map(r => {

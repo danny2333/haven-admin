@@ -86,11 +86,12 @@ export default async function UserDetail({ params }: { params: { id: string } })
     ? await supabase.from("profiles").select("id, username, banned").in("id", invitedIds)
     : { data: [] }
 
-  // Get their posts
+  // Get their public posts only — anonymous posts are private to the user
   const { data: posts } = await supabase
     .from("posts")
     .select("id, content, image_url, is_anonymous, category, created_at")
     .eq("user_id", id)
+    .eq("is_anonymous", false)
     .order("created_at", { ascending: false })
 
   // Get their unused codes
@@ -189,18 +190,14 @@ export default async function UserDetail({ params }: { params: { id: string } })
         {/* Stats */}
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-5">
           <p className="text-gray-500 text-xs uppercase tracking-wide mb-3">Stats</p>
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-2 gap-2 text-center">
             <div>
               <p className="text-2xl font-black text-[#e378ac]">{posts?.length ?? 0}</p>
-              <p className="text-gray-600 text-xs">Posts</p>
+              <p className="text-gray-600 text-xs">Public posts</p>
             </div>
             <div>
               <p className="text-2xl font-black text-purple-400">{invitedUsers?.length ?? 0}</p>
               <p className="text-gray-600 text-xs">Invited</p>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-blue-400">{posts?.filter(p => p.is_anonymous).length ?? 0}</p>
-              <p className="text-gray-600 text-xs">Anon posts</p>
             </div>
           </div>
         </div>
@@ -262,7 +259,7 @@ export default async function UserDetail({ params }: { params: { id: string } })
 
       {/* Posts */}
       <div>
-        <p className="text-gray-500 text-xs uppercase tracking-wide mb-3">Posts ({posts?.length ?? 0})</p>
+        <p className="text-gray-500 text-xs uppercase tracking-wide mb-3">Public Posts ({posts?.length ?? 0})</p>
         <div className="flex flex-col gap-3">
           {posts?.map(post => (
             <div key={post.id} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-5">

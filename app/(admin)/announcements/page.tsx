@@ -31,18 +31,24 @@ const TYPE_STYLES: Record<string, { label: string; classes: string }> = {
 }
 
 export default async function Announcements() {
-  const { data: announcements } = await supabase
-    .from("announcements")
-    .select("id, title, message, type, is_active, created_at")
-    .order("created_at", { ascending: false })
+  const [{ data: announcements, error }, { count: activeCount }, { count: inactiveCount }] = await Promise.all([
+    supabase
+      .from("announcements")
+      .select("id, title, message, type, is_active, created_at")
+      .order("created_at", { ascending: false }),
+    supabase.from("announcements").select("id", { count: "exact", head: true }).eq("is_active", true),
+    supabase.from("announcements").select("id", { count: "exact", head: true }).eq("is_active", false),
+  ])
 
-  const active = announcements?.filter(a => a.is_active) ?? []
+  if (error) console.error("Announcements query error:", error)
+
+  const active   = announcements?.filter(a => a.is_active) ?? []
   const inactive = announcements?.filter(a => !a.is_active) ?? []
 
   return (
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Announcements</h2>
-      <p className="text-gray-500 text-sm mb-8">{active.length} live · {inactive.length} inactive</p>
+      <p className="text-gray-500 text-sm mb-8">{activeCount ?? 0} live · {inactiveCount ?? 0} inactive</p>
 
       {/* Create form */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-6 mb-8 max-w-2xl">
