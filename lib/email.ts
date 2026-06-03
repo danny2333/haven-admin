@@ -1,12 +1,16 @@
 import nodemailer from "nodemailer"
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-})
+function getTransporter() {
+  const user = process.env.GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD
+  console.log("Email config — user:", user, "pass length:", pass?.length ?? 0)
+  return nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user, pass },
+  })
+}
 
 export async function sendWaitlistConfirmationEmail({
   to,
@@ -90,7 +94,7 @@ export async function sendWaitlistConfirmationEmail({
 </html>
   `
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"Haven" <${process.env.GMAIL_USER}>`,
     to,
     subject: "We've received your application — Haven",
@@ -263,7 +267,7 @@ export async function sendApprovalEmail({
 </html>
   `
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"Haven" <${process.env.GMAIL_USER}>`,
     to,
     subject: "You're in 🌸 Welcome to Haven",
