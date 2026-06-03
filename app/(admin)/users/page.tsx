@@ -83,11 +83,43 @@ export default async function Users({ searchParams }: { searchParams: { q?: stri
 
   if (error) console.error("Users query error:", error)
 
+  const userIds = users?.map(u => u.id) ?? []
+  const userEmails = (users?.map(u => u.email).filter(Boolean) ?? []) as string[]
   const inviterIds = Array.from(new Set(users?.map(u => u.invited_by).filter(Boolean)))
-  const { data: inviters } = inviterIds.length
-    ? await supabase.from("profiles").select("id, username").in("id", inviterIds)
-    : { data: [] }
+
+  const [
+    { data: inviters },
+    { data: waitlistEntries },
+    { data: followerRows },
+    { data: followingRows },
+  ] = await Promise.all([
+    inviterIds.length
+      ? supabase.from("profiles").select("id, username").in("id", inviterIds)
+      : { data: [] as { id: string; username: string }[] },
+    userEmails.length
+      ? supabase.from("waitlist").select("email").eq("status", "approved").in("email", userEmails)
+      : { data: [] as { email: string }[] },
+    userIds.length
+      ? supabase.from("follows").select("following_id").in("following_id", userIds)
+      : { data: [] as { following_id: string }[] },
+    userIds.length
+      ? supabase.from("follows").select("follower_id").in("follower_id", userIds)
+      : { data: [] as { follower_id: string }[] },
+  ])
+
   const inviterMap = Object.fromEntries((inviters ?? []).map(i => [i.id, i.username]))
+  const waitlistSet = new Set((waitlistEntries ?? []).map(w => w.email?.toLowerCase()))
+
+  const followerMap: Record<string, number> = {}
+  const followingMap: Record<string, number> = {}
+  followerRows?.forEach(f => { followerMap[f.following_id] = (followerMap[f.following_id] || 0) + 1 })
+  followingRows?.forEach(f => { followingMap[f.follower_id] = (followingMap[f.follower_id] || 0) + 1 })
+
+  const getEntry = (u: any) => {
+    if (u.invited_by) return "invited"
+    if (waitlistSet.has(u.email?.toLowerCase())) return "waitlist"
+    return "direct"
+  }
 
   return (
     <div>
@@ -113,41 +145,67 @@ export default async function Users({ searchParams }: { searchParams: { q?: stri
               <th className="text-left px-6 py-4">User</th>
               <th className="text-left px-6 py-4">Email</th>
               <th className="text-left px-6 py-4">Posts</th>
-              <th className="text-left px-6 py-4">Invited by</th>
+              <th className="text-left px-6 py-4">Followers / Following</th>
+              <th className="text-left px-6 py-4">How they got in</th>
               <th className="text-left px-6 py-4">Joined</th>
               <th className="text-left px-6 py-4">Status</th>
               <th className="px-6 py-4"></th>
             </tr>
           </thead>
           <tbody>
-            {users?.map((u, i) => (
-              <tr key={u.id} className={`border-b border-[#1f1f1f] ${u.banned ? "opacity-50" : ""} ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
-                <td className="px-6 py-4">
-                  <Link href={`/users/${u.id}`} className="hover:text-[#e378ac] transition">
-                    <p className="font-bold text-white">@{u.username}</p>
-                    {u.display_name && <p className="text-gray-500 text-xs">{u.display_name}</p>}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 text-gray-400">{u.email ?? "—"}</td>
-                <td className="px-6 py-4 text-[#e378ac] font-bold">{(u as any).posts?.[0]?.count ?? 0}</td>
-                <td className="px-6 py-4 text-gray-400">
-                  {u.invited_by
-                    ? <Link href={`/users/${u.invited_by}`} className="hover:text-[#e378ac] transition">@{inviterMap[u.invited_by] ?? "unknown"}</Link>
-                    : <span className="text-gray-600">direct</span>}
-                </td>
-                <td className="px-6 py-4 text-gray-500">{new Date(u.created_at).toLocaleDateString()}</td>
-                <td className="px-6 py-4">
-                  {u.banned
-                    ? <span className="bg-red-500/10 text-red-400 text-xs font-bold px-2 py-1 rounded-full">Banned</span>
-                    : <span className="bg-green-400/10 text-green-400 text-xs font-bold px-2 py-1 rounded-full">Active</span>}
-                </td>
-                <td className="px-6 py-4">
-                  <DeleteUserButton action={deleteUser.bind(null, u.id)} username={u.username} />
-                </td>
-              </tr>
-            ))}
+            {users?.map((u, i) => {
+              const entry = getEntry(u)
+              const followers = followerMap[u.id] ?? 0
+              const following = followingMap[u.id] ?? 0
+              return (
+                <tr key={u.id} className={`border-b border-[#1f1f1f] ${u.banned ? "opacity-50" : ""} ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
+                  <td className="px-6 py-4">
+                    <Link href={`/users/${u.id}`} className="hover:text-[#e378ac] transition">
+                      <p className="font-bold text-white">@{u.username}</p>
+                      {u.display_name && <p className="text-gray-500 text-xs">{u.display_name}</p>}
+                    </Link>
+                  </td>
+                  <td className="px-6 py-4 text-gray-400">{u.email ?? "—"}</td>
+                  <td className="px-6 py-4 text-[#e378ac] font-bold">{(u as any).posts?.[0]?.count ?? 0}</td>
+                  <td className="px-6 py-4">
+                    <span className="text-white font-bold">{followers}</span>
+                    <span className="text-gray-600 text-xs"> followers · </span>
+                    <span className="text-gray-300 font-semibold">{following}</span>
+                    <span className="text-gray-600 text-xs"> following</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {entry === "waitlist" && (
+                      <span className="bg-blue-400/10 text-blue-400 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+                        🕊️ Waitlist
+                      </span>
+                    )}
+                    {entry === "invited" && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap">
+                        🔗 <Link href={`/users/${u.invited_by}`} className="hover:text-[#e378ac] transition font-semibold">
+                          @{inviterMap[u.invited_by] ?? "unknown"}
+                        </Link>
+                      </span>
+                    )}
+                    {entry === "direct" && (
+                      <span className="bg-[#e378ac]/10 text-[#e378ac] text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+                        ✦ Direct
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-gray-500">{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-4">
+                    {u.banned
+                      ? <span className="bg-red-500/10 text-red-400 text-xs font-bold px-2 py-1 rounded-full">Banned</span>
+                      : <span className="bg-green-400/10 text-green-400 text-xs font-bold px-2 py-1 rounded-full">Active</span>}
+                  </td>
+                  <td className="px-6 py-4">
+                    <DeleteUserButton action={deleteUser.bind(null, u.id)} username={u.username} />
+                  </td>
+                </tr>
+              )
+            })}
             {users?.length === 0 && (
-              <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-600">No users found</td></tr>
+              <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-600">No users found</td></tr>
             )}
           </tbody>
         </table>

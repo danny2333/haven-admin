@@ -102,6 +102,22 @@ export default async function UserDetail({ params }: { params: { id: string } })
 
   const unusedCodes = userCodes?.filter(c => !c.used_by) ?? []
 
+  // Get follower / following counts
+  const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
+    supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("following_id", id),
+    supabase.from("follows").select("following_id", { count: "exact", head: true }).eq("follower_id", id),
+  ])
+
+  // Check if they came via waitlist approval
+  const { data: waitlistEntry } = user.email
+    ? await supabase
+        .from("waitlist")
+        .select("email, created_at")
+        .ilike("email", user.email)
+        .eq("status", "approved")
+        .maybeSingle()
+    : { data: null }
+
   // Get like + reply counts
   const postIds = posts?.map(p => p.id) ?? []
   const { data: likes } = postIds.length
@@ -179,18 +195,34 @@ export default async function UserDetail({ params }: { params: { id: string } })
           <p className="text-gray-500 text-xs uppercase tracking-wide mb-3">How they got in</p>
           {inviter ? (
             <div>
-              <p className="text-white font-bold">Invited by <Link href={`/users/${usedCode?.created_by}`} className="text-[#e378ac] hover:underline">@{inviter.username}</Link></p>
-              <p className="text-gray-500 text-sm mt-1">Code used: <span className="font-mono text-gray-400">{usedCode?.code}</span></p>
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-400 mb-1">🔗 Invited by a user</p>
+              <p className="text-white font-bold">
+                <Link href={`/users/${usedCode?.created_by}`} className="text-[#e378ac] hover:underline">@{inviter.username}</Link>
+                {" "}invited them
+              </p>
+              <p className="text-gray-500 text-sm mt-1">Code: <span className="font-mono text-gray-400">{usedCode?.code}</span></p>
+            </div>
+          ) : waitlistEntry ? (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-400 mb-1">🕊️ Via Waitlist</p>
+              <p className="text-white font-bold">Applied & approved through the waitlist</p>
+              <p className="text-gray-500 text-sm mt-1">
+                Applied {new Date(waitlistEntry.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </p>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Joined directly (admin code or open signup)</p>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-[#e378ac] mb-1">✦ Direct</p>
+              <p className="text-white font-bold">Got a code directly from you</p>
+              <p className="text-gray-500 text-sm mt-1">No waitlist entry — admin issued this code</p>
+            </div>
           )}
         </div>
 
         {/* Stats */}
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-5">
           <p className="text-gray-500 text-xs uppercase tracking-wide mb-3">Stats</p>
-          <div className="grid grid-cols-2 gap-2 text-center">
+          <div className="grid grid-cols-2 gap-3 text-center">
             <div>
               <p className="text-2xl font-black text-[#e378ac]">{posts?.length ?? 0}</p>
               <p className="text-gray-600 text-xs">Public posts</p>
@@ -198,6 +230,14 @@ export default async function UserDetail({ params }: { params: { id: string } })
             <div>
               <p className="text-2xl font-black text-purple-400">{invitedUsers?.length ?? 0}</p>
               <p className="text-gray-600 text-xs">Invited</p>
+            </div>
+            <div>
+              <p className="text-2xl font-black text-blue-400">{followerCount ?? 0}</p>
+              <p className="text-gray-600 text-xs">Followers</p>
+            </div>
+            <div>
+              <p className="text-2xl font-black text-teal-400">{followingCount ?? 0}</p>
+              <p className="text-gray-600 text-xs">Following</p>
             </div>
           </div>
         </div>

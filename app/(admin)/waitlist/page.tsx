@@ -8,6 +8,39 @@ async function updateWaitlist(id: string, status: string) {
   revalidatePath("/waitlist", "page")
 }
 
+async function resendApprovalEmail(id: string) {
+  "use server"
+  const { data: entry } = await supabase
+    .from("waitlist")
+    .select("email, name")
+    .eq("id", id)
+    .single()
+
+  if (!entry?.email) {
+    console.error("resendApprovalEmail: no email for entry", id)
+    return
+  }
+
+  // Generate a fresh code so they always have a working one
+  const CHARS = "ABCDEFGHJKLMNPQRTUVWXYZ2346789"
+  let code = ""
+  for (let i = 0; i < 8; i++) {
+    if (i === 4) code += "-"
+    code += CHARS[Math.floor(Math.random() * CHARS.length)]
+  }
+  await supabase.from("invite_codes").insert([{ code }])
+
+  try {
+    console.log("Resending approval email to:", entry.email)
+    await sendApprovalEmail({ to: entry.email, name: entry.name || "friend", code })
+    console.log("Resend successful to:", entry.email)
+  } catch (e: any) {
+    console.error("Resend failed:", e?.message, e?.code, e?.response)
+  }
+
+  revalidatePath("/waitlist", "page")
+}
+
 async function approveAndGenerateCode(id: string) {
   "use server"
   const CHARS = "ABCDEFGHJKLMNPQRTUVWXYZ2346789"
@@ -28,12 +61,15 @@ async function approveAndGenerateCode(id: string) {
   await supabase.from("waitlist").update({ status: "approved" }).eq("id", id)
 
   // Send approval email with the code
-  if (entry?.email) {
+  if (!entry?.email) {
+    console.error("approveAndGenerateCode: no email found for waitlist entry", id)
+  } else {
     try {
+      console.log("Sending approval email to:", entry.email)
       await sendApprovalEmail({ to: entry.email, name: entry.name || "friend", code })
-    } catch (e) {
-      console.error("Failed to send approval email:", e)
-      // Don't block the approval if email fails
+      console.log("Approval email sent successfully to:", entry.email)
+    } catch (e: any) {
+      console.error("Approval email failed:", e?.message, e?.code, e?.response)
     }
   }
 
@@ -151,6 +187,14 @@ export default async function Waitlist() {
                       </button>
                     </form>
                   </div>
+                )}
+
+                {entry.status === "approved" && (
+                  <form action={resendApprovalEmail.bind(null, entry.id)}>
+                    <button className="text-[#e378ac] hover:text-white border border-[#e378ac]/30 hover:border-[#e378ac] hover:bg-[#e378ac]/10 text-xs font-bold px-4 py-2 rounded-xl transition">
+                      Resend Email
+                    </button>
+                  </form>
                 )}
 
                 {entry.status === "rejected" && (
