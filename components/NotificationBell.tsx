@@ -3,8 +3,8 @@ import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 
 type WaitlistItem  = { id: string; name: string; email: string; created_at: string }
-type RequestItem   = { id: string; requested_at: string; profile: { username: string } | null }
-type ReportItem    = { id: string; reason: string; created_at: string; reported_user: { username: string } | null }
+type RequestItem   = { id: string; requested_at: string; profile: any }
+type ReportItem    = { id: string; reason: string; created_at: string; reported_user: any }
 type NewUserItem   = { id: string; username: string; created_at: string }
 
 type Props = {
