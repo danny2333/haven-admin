@@ -15,6 +15,7 @@ const AGREEMENT_CLAUSES = [
   { heading: "4. Feedback", body: "Any feedback, suggestions, bug reports, or ideas provided during the beta may be used by Haven at sole discretion to improve the product. Users waive any claim to ownership, credit, or compensation for that feedback." },
   { heading: "5. Data & Privacy", body: "Information shared on Haven during the beta is subject to the privacy policy. Beta activity and data may be used internally to improve product functionality." },
   { heading: "6. Duration", body: "This agreement remains in full effect indefinitely — including after the beta period ends. Confidentiality and no-compete obligations survive termination of beta access." },
+  { heading: "7. Content & Promotion", body: "You are welcome and encouraged to share your genuine experience of Haven on social media and promote the app to others. You may share your own posts and content. However, you may not share screenshots of other users' posts, private conversations, or any unreleased features without their explicit consent." },
 ]
 
 export default async function BetaAgreementAdmin() {
