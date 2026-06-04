@@ -14,7 +14,8 @@ const NAV = [
   { href: "/reports",      label: "Reports",        icon: "🚨", countKey: "reports" },
   { href: "/streaks",      label: "Streaks",        icon: "🔥" },
   { href: "/announcements",label: "Announcements",  icon: "📣" },
-  { href: "/settings",     label: "Settings",       icon: "⚙️" },
+  { href: "/beta-agreement", label: "Beta NDA",      icon: "📋" },
+  { href: "/settings",       label: "Settings",      icon: "⚙️" },
 ]
 
 type Counts = { waitlist: number; requests: number; reports: number }
