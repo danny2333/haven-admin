@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 
@@ -85,15 +86,15 @@ export default async function Communities() {
             {communities?.map((c, i) => (
               <tr key={c.id} className={`border-b border-[#1f1f1f] ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
+                  <Link href={`/communities/${c.id}`} className="flex items-center gap-2 hover:opacity-80 transition">
                     <span className="text-lg">{c.emoji ?? "🏘️"}</span>
                     <div>
-                      <p className="text-white font-semibold">{c.name}</p>
+                      <p className="text-white font-semibold hover:text-[#e378ac] transition">{c.name}</p>
                       {c.description && (
                         <p className="text-gray-500 text-xs truncate max-w-[180px]">{c.description}</p>
                       )}
                     </div>
-                  </div>
+                  </Link>
                 </td>
                 <td className="px-6 py-4">
                   {c.category ? (
