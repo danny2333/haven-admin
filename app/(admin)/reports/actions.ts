@@ -108,6 +108,57 @@ export async function resolveReport(
         .update({ suspended_until: suspendUntil })
         .eq("id", reportedUserId)
       if (suspendError) throw new Error(`Suspend failed: ${suspendError.message}`)
+
+      // Send suspension email
+      if (userProfile?.email) {
+        const suspendUntilDate = new Date(suspendUntil)
+        const untilFormatted = suspendUntilDate.toLocaleString("en-US", {
+          month: "long", day: "numeric", year: "numeric",
+          hour: "numeric", minute: "2-digit", timeZoneName: "short",
+        })
+        const removedAt = new Date().toLocaleString("en-US", {
+          month: "long", day: "numeric", year: "numeric",
+          hour: "numeric", minute: "2-digit", timeZoneName: "short",
+        })
+        const postBlock = postSnippet
+          ? `<div style="background:#111;border-left:3px solid #f97316;border-radius:8px;padding:14px 18px;margin:20px 0;font-size:14px;color:#aaa;font-style:italic;">"${postSnippet}${postSnippet.length >= 200 ? "…" : ""}"</div>`
+          : ""
+
+        await makeTransporter().sendMail({
+          from: `"Haven" <${process.env.GMAIL_USER}>`,
+          to: userProfile.email,
+          subject: "Your Haven account has been suspended",
+          html: `
+            <div style="background:#0f0f0f;padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+              <div style="max-width:560px;margin:0 auto;">
+                <p style="font-size:32px;font-style:italic;font-weight:900;color:#e378ac;font-family:Georgia,serif;margin:0 0 32px;">haven</p>
+                <div style="background:#1a1a1a;border-radius:20px;padding:32px;border:1px solid #2a2a2a;">
+                  <p style="font-size:16px;font-weight:700;color:#fff;margin:0 0 16px;">Hi @${userProfile.username ?? "there"},</p>
+                  <p style="font-size:15px;color:#ccc;line-height:1.7;margin:0 0 12px;">
+                    Your Haven account has been <strong style="color:#f97316;">suspended</strong> due to a violation of our community guidelines.
+                  </p>
+                  ${postBlock}
+                  <p style="font-size:14px;color:#888;margin:0 0 8px;"><strong style="color:#ccc;">Post removed at:</strong> ${removedAt}</p>
+                  ${note ? `<p style="font-size:14px;color:#888;margin:0 0 8px;"><strong style="color:#ccc;">Reason:</strong> ${note}</p>` : ""}
+                  <div style="background:#111;border:1px solid #f97316;border-radius:12px;padding:16px 20px;margin:20px 0;">
+                    <p style="font-size:13px;color:#f97316;font-weight:700;margin:0 0 4px;">Suspended until</p>
+                    <p style="font-size:15px;color:#fff;font-weight:700;margin:0;">${untilFormatted}</p>
+                  </div>
+                  <p style="font-size:14px;color:#aaa;line-height:1.7;margin:16px 0 0;">
+                    During this period you won't be able to post, comment, or interact on Haven.
+                    After your suspension ends, your account will be restored automatically.
+                    Further violations may result in a permanent ban.
+                  </p>
+                  <p style="margin:28px 0 0;font-size:14px;color:#666;">
+                    — The Haven Team<br/>
+                    <a href="mailto:havenapp2026@gmail.com" style="color:#e378ac;">havenapp2026@gmail.com</a>
+                  </p>
+                </div>
+              </div>
+            </div>
+          `,
+        }).catch((e: any) => console.error("Suspension email failed:", e))
+      }
     }
 
     // L4 — ban: only update columns we know exist
