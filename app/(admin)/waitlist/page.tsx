@@ -28,7 +28,8 @@ async function resendApprovalEmail(id: string) {
     if (i === 4) code += "-"
     code += CHARS[Math.floor(Math.random() * CHARS.length)]
   }
-  await supabase.from("invite_codes").insert([{ code }])
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  await supabase.from("invite_codes").insert([{ code, expires_at: expiresAt }])
 
   try {
     console.log("Resending approval email to:", entry.email)
@@ -57,7 +58,8 @@ async function approveAndGenerateCode(id: string) {
     .eq("id", id)
     .single()
 
-  await supabase.from("invite_codes").insert([{ code }])
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  await supabase.from("invite_codes").insert([{ code, expires_at: expiresAt }])
   await supabase.from("waitlist").update({ status: "approved" }).eq("id", id)
 
   // Send approval email with the code
