@@ -14,9 +14,11 @@ const NAV = [
   { href: "/communities",  label: "Communities",    icon: "🏘️" },
   { href: "/reports",      label: "Reports",        icon: "🚨", countKey: "reports" },
   { href: "/analytics",    label: "Analytics",      icon: "📊" },
+  { href: "/referrals",    label: "Referrals",      icon: "🏆" },
   { href: "/broadcast",    label: "Broadcast DM",   icon: "💌" },
   { href: "/announcements",label: "Announcements",  icon: "📣" },
   { href: "/settings",       label: "Settings",      icon: "⚙️" },
+  { href: "/system-health",  label: "System Health", icon: "🩺" },
 ]
 
 type Counts = { waitlist: number; requests: number; reports: number }
