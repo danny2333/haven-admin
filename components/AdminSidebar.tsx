@@ -9,12 +9,13 @@ const NAV = [
   { href: "/codes",        label: "Invite Codes",   icon: "🎟️" },
   { href: "/requests",     label: "Code Requests",  icon: "📬", countKey: "requests" },
   { href: "/posts",        label: "Posts",          icon: "🌸" },
-  { href: "/daily",        label: "Daily",          icon: "☀️" },
+  { href: "/dailies",      label: "Dailies",        icon: "☀️" },
+  { href: "/journal",      label: "Journal",        icon: "📓" },
   { href: "/communities",  label: "Communities",    icon: "🏘️" },
   { href: "/reports",      label: "Reports",        icon: "🚨", countKey: "reports" },
-  { href: "/streaks",      label: "Streaks",        icon: "🔥" },
+  { href: "/analytics",    label: "Analytics",      icon: "📊" },
+  { href: "/broadcast",    label: "Broadcast DM",   icon: "💌" },
   { href: "/announcements",label: "Announcements",  icon: "📣" },
-  { href: "/beta-agreement", label: "Beta NDA",      icon: "📋" },
   { href: "/settings",       label: "Settings",      icon: "⚙️" },
 ]
 
@@ -53,7 +54,7 @@ export default function AdminSidebar({ counts }: { counts: Counts }) {
             >
               <span>{item.icon}</span>
               <span className="flex-1">{item.label}</span>
-              {badge > 0 && (
+              {badge > 0 && !active && (
                 <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
                   {badge > 99 ? "99+" : badge}
                 </span>
