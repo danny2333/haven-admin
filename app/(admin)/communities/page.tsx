@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { fmtDate, getAdminTZ } from "@/lib/date"
 import { revalidatePath } from "next/cache"
 
 async function deleteCommunity(id: string) {
@@ -22,6 +23,7 @@ async function deleteCommunity(id: string) {
 }
 
 export default async function Communities() {
+  const tz = await getAdminTZ()
   const [{ data: communities, error }, { count: totalCount }] = await Promise.all([
     supabase
       .from("communities")
@@ -124,7 +126,7 @@ export default async function Communities() {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-gray-500">
-                  {new Date(c.created_at).toLocaleDateString()}
+                  {fmtDate(c.created_at, tz)}
                 </td>
                 <td className="px-6 py-4">
                   <form action={deleteCommunity.bind(null, c.id)}>

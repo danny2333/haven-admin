@@ -1,10 +1,14 @@
 import { supabase } from "@/lib/supabase"
 
 export default async function Streaks() {
+  // A streak is only active if the user posted within the last 48 hours
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split("T")[0]
+
   const { data: top } = await supabase
     .from("profiles")
-    .select("id, username, display_name, avatar_url, current_streak, longest_streak")
+    .select("id, username, display_name, avatar_url, current_streak, longest_streak, last_post_date")
     .gt("current_streak", 0)
+    .gte("last_post_date", twoDaysAgo)
     .order("current_streak", { ascending: false })
     .limit(50)
 
@@ -22,7 +26,7 @@ export default async function Streaks() {
 
       {/* Current streaks */}
       <div className="mb-10">
-        <p className="text-xs text-gray-500 uppercase tracking-wide font-bold mb-4">🔥 Active Streaks</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wide font-bold mb-4">🔥 Active Streaks — {top?.length ?? 0}</p>
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -30,6 +34,7 @@ export default async function Streaks() {
                 <th className="text-left px-6 py-4">Rank</th>
                 <th className="text-left px-6 py-4">User</th>
                 <th className="text-left px-6 py-4">Current Streak</th>
+                <th className="text-left px-6 py-4">Last Post</th>
                 <th className="text-left px-6 py-4">Personal Best</th>
               </tr>
             </thead>
@@ -49,6 +54,9 @@ export default async function Streaks() {
                     <span className="text-[#e378ac] font-black text-base">
                       🔥 {u.current_streak} day{u.current_streak !== 1 ? "s" : ""}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 text-gray-500 text-xs">
+                    {u.last_post_date ?? "—"}
                   </td>
                   <td className="px-6 py-4 text-gray-400">
                     🏆 {u.longest_streak} day{u.longest_streak !== 1 ? "s" : ""}

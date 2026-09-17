@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { fmtDateTime, getAdminTZ } from "@/lib/date"
 import { sendApprovalEmail } from "@/lib/email"
 import { revalidatePath } from "next/cache"
 
@@ -106,6 +107,7 @@ const SOCIALS = [
 ]
 
 export default async function Waitlist() {
+  const tz = await getAdminTZ()
   const [
     { data: entries, error },
     { count: pendingCount },
@@ -169,10 +171,7 @@ export default async function Waitlist() {
                     {entry.email}
                   </a>
                   <p className="text-gray-600 text-xs mt-1">
-                    Applied {new Date(entry.created_at).toLocaleDateString("en-US", {
-                      month: "long", day: "numeric", year: "numeric",
-                      hour: "numeric", minute: "2-digit",
-                    })}
+                    Applied {fmtDateTime(entry.created_at, tz)}
                   </p>
                 </div>
 

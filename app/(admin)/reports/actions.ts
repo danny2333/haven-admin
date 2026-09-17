@@ -1,6 +1,7 @@
 "use server"
 
 import { supabase } from "@/lib/supabase"
+import { fmtDateTime, getAdminTZ } from "@/lib/date"
 import { revalidatePath } from "next/cache"
 import nodemailer from "nodemailer"
 
@@ -24,7 +25,10 @@ export async function resolveReport(
   reportedUserId: string,
   suspendUntil: string | null,
   note: string | null,
+  replyId: string | null = null,
+  communityReplyId: string | null = null,
 ): Promise<{ error: string | null }> {
+  const tz = await getAdminTZ()
   try {
     // Fetch post content BEFORE deleting so we can include it in the warning email
     let postSnippet: string | null = null
@@ -46,16 +50,15 @@ export async function resolveReport(
 
     // L1+ — remove the reported content
     if (level >= 1) {
-      if (postId)    await supabase.from("posts").delete().eq("id", postId)
-      if (messageId) await supabase.from("messages").delete().eq("id", messageId)
+      if (postId)          await supabase.from("posts").delete().eq("id", postId)
+      if (messageId)       await supabase.from("messages").delete().eq("id", messageId)
+      if (replyId)         await supabase.from("replies").delete().eq("id", replyId)
+      if (communityReplyId) await supabase.from("community_replies").delete().eq("id", communityReplyId)
     }
 
     // L2 — warn: send email + in-app notification
     if (level === 2) {
-      const warningTime = new Date().toLocaleString("en-US", {
-        month: "long", day: "numeric", year: "numeric",
-        hour: "numeric", minute: "2-digit", timeZoneName: "short",
-      })
+      const warningTime = fmtDateTime(new Date().toISOString(), tz)
 
       if (userProfile?.email) {
         const postBlock = postSnippet
@@ -112,14 +115,8 @@ export async function resolveReport(
       // Send suspension email
       if (userProfile?.email) {
         const suspendUntilDate = new Date(suspendUntil)
-        const untilFormatted = suspendUntilDate.toLocaleString("en-US", {
-          month: "long", day: "numeric", year: "numeric",
-          hour: "numeric", minute: "2-digit", timeZoneName: "short",
-        })
-        const removedAt = new Date().toLocaleString("en-US", {
-          month: "long", day: "numeric", year: "numeric",
-          hour: "numeric", minute: "2-digit", timeZoneName: "short",
-        })
+        const untilFormatted = fmtDateTime(suspendUntilDate.toISOString(), tz)
+        const removedAt = fmtDateTime(new Date().toISOString(), tz)
         const postBlock = postSnippet
           ? `<div style="background:#111;border-left:3px solid #f97316;border-radius:8px;padding:14px 18px;margin:20px 0;font-size:14px;color:#aaa;font-style:italic;">"${postSnippet}${postSnippet.length >= 200 ? "…" : ""}"</div>`
           : ""
@@ -168,6 +165,8 @@ export async function resolveReport(
         .update({ banned: true })
         .eq("id", reportedUserId)
       if (banError) throw new Error(`Ban failed: ${banError.message}`)
+      // Revoke all unused invite codes so they can't be shared or used post-ban
+      await supabase.from("invite_codes").delete().eq("created_by", reportedUserId).is("used_at", null)
     }
 
     // Mark report resolved

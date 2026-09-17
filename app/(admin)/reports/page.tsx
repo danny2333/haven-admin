@@ -1,4 +1,5 @@
 import ReportCard from "@/components/ReportCard"
+import { fmtDate, fmtTime, getAdminTZ } from "@/lib/date"
 import { supabase } from "@/lib/supabase"
 
 export const revalidate = 0
@@ -6,6 +7,7 @@ export const revalidate = 0
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function Reports() {
+  const tz = await getAdminTZ()
   const [
     { data: reports, error },
     { count: pendingCount },
@@ -90,17 +92,27 @@ export default async function Reports() {
 
       {pending.length > 0 && (
         <div className="flex flex-col gap-4 mb-10">
-          {pending.map(r => (
-            <ReportCard
-              key={r.id}
-              report={r}
-              reporter={profileMap[r.reporter_id]}
-              reported={profileMap[r.reported_user_id]}
-              postContent={r.reported_post_id ? postMap[r.reported_post_id] ?? null : null}
-              messageContent={r.reported_message_id ? messageMap[r.reported_message_id] ?? null : null}
-              communityPostContent={r.reported_community_post_id ? communityPostMap[r.reported_community_post_id] ?? null : null}
-            />
-          ))}
+          {pending.map(r => {
+            const replyContent = (r.reported_reply_id || r.reported_community_reply_id)
+              ? {
+                  text: r.reported_reply_text ?? null,
+                  voice_url: r.reported_reply_voice_url ?? null,
+                  username: profileMap[r.reported_user_id]?.username ?? null,
+                }
+              : null
+            return (
+              <ReportCard
+                key={r.id}
+                report={r}
+                reporter={profileMap[r.reporter_id]}
+                reported={profileMap[r.reported_user_id]}
+                postContent={r.reported_post_id ? postMap[r.reported_post_id] ?? null : null}
+                messageContent={r.reported_message_id ? messageMap[r.reported_message_id] ?? null : null}
+                communityPostContent={r.reported_community_post_id ? communityPostMap[r.reported_community_post_id] ?? null : null}
+                replyContent={replyContent}
+              />
+            )
+          })}
         </div>
       )}
 
@@ -113,9 +125,11 @@ export default async function Reports() {
               <thead>
                 <tr className="border-b border-[#2a2a2a] text-gray-500 text-xs uppercase tracking-wide">
                   <th className="text-left px-6 py-4">Priority</th>
+                  <th className="text-left px-6 py-4">Reported By</th>
                   <th className="text-left px-6 py-4">Reported User</th>
                   <th className="text-left px-6 py-4">Reason</th>
                   <th className="text-left px-6 py-4">Action</th>
+                  <th className="text-left px-6 py-4">Reported</th>
                   <th className="text-left px-6 py-4">Resolved</th>
                 </tr>
               </thead>
@@ -135,6 +149,7 @@ export default async function Reports() {
                           {pri.toUpperCase()}
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-gray-400 text-sm">@{profileMap[r.reporter_id]?.username ?? "unknown"}</td>
                       <td className="px-6 py-4 text-gray-300">@{profileMap[r.reported_user_id]?.username ?? "unknown"}</td>
                       <td className="px-6 py-4 text-gray-500 max-w-xs"><p className="truncate">{r.reason ?? "—"}</p></td>
                       <td className="px-6 py-4">
@@ -143,9 +158,16 @@ export default async function Reports() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-500">
-                        {r.resolved_at
-                          ? new Date(r.resolved_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                          : new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        <div>{fmtDate(r.created_at, tz)}</div>
+                        <div className="text-xs text-gray-600 mt-0.5">{fmtTime(r.created_at, tz)}</div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-500">
+                        {r.resolved_at ? (
+                          <>
+                            <div>{fmtDate(r.resolved_at, tz)}</div>
+                            <div className="text-xs text-gray-600 mt-0.5">{fmtTime(r.resolved_at, tz)}</div>
+                          </>
+                        ) : <span className="text-gray-700">—</span>}
                       </td>
                     </tr>
                   )

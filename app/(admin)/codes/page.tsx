@@ -1,38 +1,91 @@
+import CodesTable from "@/components/CodesTable"
 import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 
-async function generateCodes(count: number) {
+async function generateCodes(formData: FormData) {
   "use server"
+  const count = Math.min(Math.max(parseInt(formData.get("count") as string) || 10, 1), 200)
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
   const CHARS = "ABCDEFGHJKLMNPQRTUVWXYZ2346789"
   const randomCode = () => {
+    const bytes = new Uint8Array(8)
+    crypto.getRandomValues(bytes)
     let code = ""
     for (let i = 0; i < 8; i++) {
       if (i === 4) code += "-"
-      code += CHARS[Math.floor(Math.random() * CHARS.length)]
+      code += CHARS[bytes[i] % CHARS.length]
     }
     return code
   }
-  const rows = Array.from({ length: count }, () => ({ code: randomCode() }))
+  const rows = Array.from({ length: count }, () => ({ code: randomCode(), expires_at: expiresAt }))
   await supabase.from("invite_codes").insert(rows)
+  revalidatePath("/codes")
+}
+
+async function deleteCode(id: string) {
+  "use server"
+  await supabase.from("invite_codes").delete().eq("id", id)
+  revalidatePath("/codes")
+}
+
+async function deleteAllUnused() {
+  "use server"
+  // Only delete unused codes that have already expired — never valid future codes
+  await supabase
+    .from("invite_codes")
+    .delete()
+    .is("used_by", null)
+    .is("used_at", null)
+    .lt("expires_at", new Date().toISOString())
+  revalidatePath("/codes")
+}
+
+async function deleteAllExpired() {
+  "use server"
+  await supabase.from("invite_codes").delete().is("used_by", null).lt("expires_at", new Date().toISOString())
   revalidatePath("/codes")
 }
 
 export default async function Codes() {
   const [
-    { data: codes, error },
+    { data: rawCodes, error },
     { count: unusedCount },
     { count: usedCount },
   ] = await Promise.all([
     supabase
       .from("invite_codes")
-      .select(`id, code, created_at, used_at, creator:created_by(username), redeemer:used_by(username)`)
+      .select("id, code, created_at, used_at, expires_at, created_by, used_by")
       .order("created_at", { ascending: false })
-      .limit(200),
-    supabase.from("invite_codes").select("id", { count: "exact", head: true }).is("used_by", null),
+      .limit(500),
+    supabase.from("invite_codes").select("id", { count: "exact", head: true }).is("used_by", null).gte("expires_at", new Date().toISOString()),
     supabase.from("invite_codes").select("id", { count: "exact", head: true }).not("used_by", "is", null),
   ])
 
   if (error) console.error("Codes query error:", error)
+
+  // Fetch profiles for all creators/redeemers in one query
+  const allUserIds = [...new Set([
+    ...(rawCodes ?? []).map((c: any) => c.created_by).filter(Boolean),
+    ...(rawCodes ?? []).map((c: any) => c.used_by).filter(Boolean),
+  ])]
+  const { data: profiles } = allUserIds.length > 0
+    ? await supabase.from("profiles").select("id, username").in("id", allUserIds)
+    : { data: [] }
+  const profileMap: Record<string, { id: string; username: string }> = {}
+  for (const p of profiles ?? []) profileMap[p.id] = p
+
+  const codes = (rawCodes ?? []).map((c: any) => ({
+    id: c.id,
+    code: c.code,
+    created_at: c.created_at,
+    used_at: c.used_at,
+    expires_at: c.expires_at ?? null,
+    creator: c.created_by && profileMap[c.created_by] ? profileMap[c.created_by] : null,
+    redeemer: c.used_by && profileMap[c.used_by] ? profileMap[c.used_by] : null,
+  }))
+
+  const now = new Date().toISOString()
+  const expiredCount = codes.filter((c: any) => !c.redeemer && c.expires_at && c.expires_at < now).length
 
   return (
     <div>
@@ -40,64 +93,36 @@ export default async function Codes() {
         <div>
           <h2 className="text-2xl font-black text-white mb-1">Invite Codes</h2>
           <p className="text-gray-500 text-sm">
-            {unusedCount ?? 0} unused · {usedCount ?? 0} used
-            {(unusedCount ?? 0) + (usedCount ?? 0) > 200 && (
-              <span className="text-gray-600"> · showing 200 most recent</span>
-            )}
+            {unusedCount ?? 0} active · {usedCount ?? 0} used
+            {expiredCount > 0 && <span className="text-orange-400"> · {expiredCount} expired</span>}
           </p>
         </div>
         <div className="flex gap-2">
-          <form action={generateCodes.bind(null, 10)}>
-            <button className="bg-[#e378ac]/10 hover:bg-[#e378ac]/20 text-[#e378ac] border border-[#e378ac]/20 text-sm font-bold px-4 py-2 rounded-xl transition">
-              + Generate 10
-            </button>
-          </form>
-          <form action={generateCodes.bind(null, 50)}>
+          {expiredCount > 0 && (
+            <form action={deleteAllExpired}>
+              <button className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 text-sm font-bold px-4 py-2 rounded-xl transition">
+                Delete {expiredCount} expired
+              </button>
+            </form>
+          )}
+
+          <form action={generateCodes} className="flex items-center gap-2">
+            <input
+              type="number"
+              name="count"
+              defaultValue={10}
+              min={1}
+              max={200}
+              className="w-20 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-[#e378ac]"
+            />
             <button className="bg-[#e378ac] hover:bg-[#c0547a] text-white text-sm font-bold px-4 py-2 rounded-xl transition">
-              + Generate 50
+              + Generate
             </button>
           </form>
         </div>
       </div>
 
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#2a2a2a] text-gray-500 text-xs uppercase tracking-wide">
-              <th className="text-left px-6 py-4">Code</th>
-              <th className="text-left px-6 py-4">Created by</th>
-              <th className="text-left px-6 py-4">Used by</th>
-              <th className="text-left px-6 py-4">Used at</th>
-              <th className="text-left px-6 py-4">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {codes?.map((c, i) => (
-              <tr key={c.id} className={`border-b border-[#1f1f1f] ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
-                <td className="px-6 py-4 font-mono font-bold text-white tracking-widest">{c.code}</td>
-                <td className="px-6 py-4 text-gray-400">
-                  {(c.creator as any)?.username ? `@${(c.creator as any).username}` : <span className="text-gray-600">admin</span>}
-                </td>
-                <td className="px-6 py-4 text-gray-400">
-                  {(c.redeemer as any)?.username ? `@${(c.redeemer as any).username}` : "—"}
-                </td>
-                <td className="px-6 py-4 text-gray-500">
-                  {c.used_at ? new Date(c.used_at).toLocaleDateString() : "—"}
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                    (c.redeemer as any)?.username
-                      ? "bg-gray-500/10 text-gray-500"
-                      : "bg-green-400/10 text-green-400"
-                  }`}>
-                    {(c.redeemer as any)?.username ? "Used" : "Available"}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <CodesTable codes={codes} onDelete={deleteCode} />
     </div>
   )
 }

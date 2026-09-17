@@ -1,10 +1,12 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { fmtDate, fmtTime, getAdminTZ } from "@/lib/date"
 import CommunityDetail from "./CommunityDetail"
 
 export default async function CommunityDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
+  const tz = await getAdminTZ()
 
   const [
     { data: community },
@@ -83,7 +85,7 @@ export default async function CommunityDetailPage({ params }: { params: { id: st
             )}
             <div className="flex gap-6 mt-3 text-xs text-gray-500">
               <span>Created by <span className="text-gray-300">@{profileMap[community.created_by]?.username ?? "unknown"}</span></span>
-              <span>{new Date(community.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
+              <span>{fmtDate(community.created_at, tz)} · {fmtTime(community.created_at, tz)}</span>
               <span><span className="text-white font-bold">{members?.length ?? 0}</span> members</span>
               <span><span className="text-white font-bold">{posts?.length ?? 0}</span> posts</span>
             </div>
@@ -93,6 +95,7 @@ export default async function CommunityDetailPage({ params }: { params: { id: st
 
       <CommunityDetail
         communityId={id}
+        tz={tz}
         posts={(posts ?? []).map(p => ({ ...p, author: profileMap[p.user_id] ?? null }))}
         members={(members ?? []).map(m => ({ ...m, profile: profileMap[m.user_id] ?? null }))}
       />

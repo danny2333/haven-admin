@@ -1,18 +1,28 @@
+export const dynamic = "force-dynamic"
+
 import { supabase } from "@/lib/supabase"
+import { localDayStart } from "@/lib/date"
 
 async function getStats() {
-  const todayStart = new Date()
-  todayStart.setUTCHours(0, 0, 0, 0)
+  const todayStart = localDayStart()
 
-  const [users, posts, waitlist, requests, codes, dailyToday, activeStreaks, newToday] = await Promise.all([
+  // A streak is active only if the user posted within the last 48 hours
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split("T")[0]
+  const sevenDaysAgo  = new Date(Date.now() - 7  * 24 * 60 * 60 * 1000).toISOString()
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  const [users, posts, waitlist, requests, codes, dailyToday, activeStreaks, newToday, dau, wau, mau] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.from("posts").select("id", { count: "exact", head: true }),
     supabase.from("waitlist").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("invite_codes").select("id", { count: "exact", head: true }).is("used_by", null),
     supabase.from("daily_posts").select("id", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
-    supabase.from("profiles").select("id", { count: "exact", head: true }).gt("current_streak", 0),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).gt("current_streak", 0).gte("last_post_date", twoDaysAgo),
     supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).gte("last_seen_at", todayStart.toISOString()),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).gte("last_seen_at", sevenDaysAgo),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).gte("last_seen_at", thirtyDaysAgo),
   ])
 
   const val = (res: { count: number | null; error: any }) =>
@@ -27,6 +37,9 @@ async function getStats() {
     dailyToday:   val(dailyToday),
     activeStreaks: val(activeStreaks),
     newToday:     val(newToday),
+    dau:          val(dau),
+    wau:          val(wau),
+    mau:          val(mau),
   }
 }
 
@@ -36,6 +49,9 @@ export default async function Dashboard() {
   const cards = [
     { label: "Total Users",        value: stats.users,        color: "text-[#e378ac]" },
     { label: "Joined Today",       value: stats.newToday,     color: "text-[#e378ac]" },
+    { label: "Daily Active Users",   value: stats.dau,          color: "text-emerald-400" },
+    { label: "Weekly Active Users",  value: stats.wau,          color: "text-emerald-400" },
+    { label: "Monthly Active Users", value: stats.mau,          color: "text-emerald-400" },
     { label: "Total Posts",        value: stats.posts,        color: "text-purple-400" },
     { label: "Daily Posts Today",  value: stats.dailyToday,   color: "text-orange-400" },
     { label: "Active Streaks",     value: stats.activeStreaks, color: "text-yellow-400" },

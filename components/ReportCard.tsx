@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition } from "react"
+import Image from "next/image"
 import ImagePreviewButton from "@/components/ImagePreviewButton"
 import SendEmailModal from "@/components/SendEmailModal"
 import { resolveReport, escalateReport, dismissReport } from "@/app/(admin)/reports/actions"
@@ -20,6 +21,16 @@ const parseImageUrls = (raw: string | null): string[] => {
     if ((parsed as any)?._type === "text-card") return []
   } catch {}
   return raw.startsWith("http") ? [raw] : []
+}
+
+type TextCard = { text: string; bg: string; textColor: string; fontFamily: string; fontStyle: string; fontWeight: string; fontSize: number; lineHeight: number; align: string }
+const parseTextCard = (raw: string | null): TextCard | null => {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed?._type === "text-card") return parsed as TextCard
+  } catch {}
+  return null
 }
 
 const DEFAULT_PRIORITY: Record<string, string> = {
@@ -146,11 +157,12 @@ type Props = {
   postContent?: { content: string | null; image_url: string | null; is_anonymous: boolean; username: string | null } | null
   messageContent?: { content: string | null; image_url: string | null; sender_id: string } | null
   communityPostContent?: { title: string | null; content: string | null; image_url: string | null; username: string | null; community: string | null } | null
+  replyContent?: { text: string | null; voice_url: string | null; username: string | null } | null
 }
 
 export default function ReportCard({
   report: r, reporter, reported,
-  postContent, messageContent, communityPostContent,
+  postContent, messageContent, communityPostContent, replyContent,
 }: Props) {
   const priority = (r.priority ?? DEFAULT_PRIORITY[r.reason] ?? "p2") as keyof typeof PRIORITY
   const pc = PRIORITY[priority] ?? PRIORITY.p2
@@ -174,6 +186,8 @@ export default function ReportCard({
         r.reported_user_id,
         suspendUntil,
         note || null,
+        r.reported_reply_id ?? null,
+        r.reported_community_reply_id ?? null,
       )
       if (error) {
         alert(`Action failed: ${error}`)
@@ -209,11 +223,13 @@ export default function ReportCard({
         {r.reported_post_id && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400/10 text-purple-400">post</span>}
         {r.reported_message_id && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/10 text-blue-400">DM</span>}
         {r.reported_community_post_id && <span className="text-xs px-2 py-0.5 rounded-full bg-green-400/10 text-green-400">community post</span>}
-        {!r.reported_post_id && !r.reported_message_id && !r.reported_community_post_id && (
+        {r.reported_reply_id && <span className="text-xs px-2 py-0.5 rounded-full bg-pink-400/10 text-pink-400">comment</span>}
+        {r.reported_community_reply_id && <span className="text-xs px-2 py-0.5 rounded-full bg-teal-400/10 text-teal-400">community comment</span>}
+        {!r.reported_post_id && !r.reported_message_id && !r.reported_community_post_id && !r.reported_reply_id && !r.reported_community_reply_id && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-[#e378ac]/10 text-[#e378ac]">user</span>
         )}
         <span className="text-xs text-gray-600 ml-auto">
-          {new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+          {new Date(r.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
         </span>
       </div>
 
@@ -329,7 +345,18 @@ export default function ReportCard({
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Reported by</p>
-              <p className="text-gray-400 font-semibold text-sm">@{reporter?.username ?? "unknown"}</p>
+              <p className="text-white font-bold text-sm">@{reporter?.username ?? "unknown"}</p>
+              {reporter?.email && (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-gray-600 text-xs">{reporter.email}</p>
+                  <SendEmailModal
+                    to={reporter.email}
+                    username={reporter.username ?? "user"}
+                    defaultSubject="Your Haven report"
+                    defaultBody={`Hi @${reporter.username ?? "there"},\n\nThank you for reporting content on Haven. We've received your report and will review it shortly.\n\nThe Haven Team`}
+                  />
+                </div>
+              )}
             </div>
             <div>
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Reported user</p>
@@ -389,10 +416,34 @@ export default function ReportCard({
               <div className="flex items-center gap-2 mb-2">
                 <p className="text-gray-500 text-xs uppercase tracking-wide">Reported post</p>
                 {postContent.is_anonymous && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400/10 text-purple-400">anonymous</span>}
+                {parseTextCard(postContent.image_url) && <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-400/10 text-indigo-400">text card</span>}
               </div>
               <p className="text-xs text-[#e378ac] font-bold mb-2">Real author: @{postContent.username ?? reported?.username ?? "unknown"}</p>
               {postContent.content && <p className="text-gray-300 text-sm leading-relaxed mb-3">{postContent.content}</p>}
-              {(() => { const urls = parseImageUrls(postContent.image_url); return urls.length > 0 ? <ImagePreviewButton urls={urls} /> : null })()}
+              {(() => {
+                const tc = parseTextCard(postContent.image_url)
+                if (tc) {
+                  return (
+                    <div
+                      style={{
+                        backgroundColor: tc.bg,
+                        color: tc.textColor,
+                        fontFamily: tc.fontFamily,
+                        fontStyle: tc.fontStyle as any,
+                        fontWeight: tc.fontWeight as any,
+                        fontSize: tc.fontSize,
+                        lineHeight: `${tc.lineHeight}px`,
+                        textAlign: tc.align as any,
+                      }}
+                      className="rounded-2xl p-6 leading-relaxed"
+                    >
+                      {tc.text}
+                    </div>
+                  )
+                }
+                const urls = parseImageUrls(postContent.image_url)
+                return urls.length > 0 ? <ImagePreviewButton urls={urls} /> : null
+              })()}
             </div>
           )}
 
@@ -414,12 +465,30 @@ export default function ReportCard({
             </div>
           )}
 
+          {replyContent && (
+            <div className="mb-4 bg-[#111] border border-[#2a2a2a] rounded-xl p-4">
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">
+                Reported comment {r.reported_community_reply_id ? "· community" : ""}
+              </p>
+              <p className="text-xs text-[#e378ac] font-bold mb-2">@{replyContent.username ?? reported?.username ?? "unknown"}</p>
+              {replyContent.text && <p className="text-gray-300 text-sm leading-relaxed">{replyContent.text}</p>}
+              {replyContent.voice_url && (
+                <div className="mt-3">
+                  <p className="text-gray-500 text-xs mb-1.5">Voice note:</p>
+                  <audio controls src={replyContent.voice_url} className="w-full" style={{ height: 36 }} />
+                </div>
+              )}
+              {!replyContent.text && !replyContent.voice_url && (
+                <p className="text-gray-600 text-xs italic">Comment content not captured</p>
+              )}
+            </div>
+          )}
+
           {r.screenshot_url && (
             <div className="mb-4">
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">Screenshot</p>
               <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="inline-block group">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={r.screenshot_url} alt="Report screenshot" className="w-28 h-28 object-cover rounded-xl border-2 border-[#2a2a2a] group-hover:border-[#e378ac] transition" />
+                <Image src={r.screenshot_url} alt="Report screenshot" width={112} height={112} className="w-28 h-28 object-cover rounded-xl border-2 border-[#2a2a2a] group-hover:border-[#e378ac] transition" />
                 <p className="text-[#e378ac] text-xs mt-1">View full size ↗</p>
               </a>
             </div>

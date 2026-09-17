@@ -6,9 +6,10 @@ export function middleware(req: NextRequest) {
   // Let login page through
   if (pathname.startsWith("/login")) return NextResponse.next()
 
-  // Check for admin session cookie
+  // Check for admin session cookie — fail closed if env var is missing
   const session = req.cookies.get("haven_admin")?.value
-  if (session !== "authenticated") {
+  const validToken = process.env.ADMIN_SESSION_TOKEN
+  if (!validToken || session !== validToken) {
     return NextResponse.redirect(new URL("/login", req.url))
   }
 

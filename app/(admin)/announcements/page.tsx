@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { fmtDate, fmtTime, getAdminTZ } from "@/lib/date"
 import { revalidatePath } from "next/cache"
 
 async function createAnnouncement(formData: FormData) {
@@ -31,6 +32,7 @@ const TYPE_STYLES: Record<string, { label: string; classes: string }> = {
 }
 
 export default async function Announcements() {
+  const tz = await getAdminTZ()
   const [{ data: announcements, error }, { count: activeCount }, { count: inactiveCount }] = await Promise.all([
     supabase
       .from("announcements")
@@ -97,6 +99,7 @@ export default async function Announcements() {
               <AnnouncementCard
                 key={a.id}
                 announcement={a}
+                tz={tz}
                 toggleAnnouncement={toggleAnnouncement}
                 deleteAnnouncement={deleteAnnouncement}
               />
@@ -114,6 +117,7 @@ export default async function Announcements() {
               <AnnouncementCard
                 key={a.id}
                 announcement={a}
+                tz={tz}
                 toggleAnnouncement={toggleAnnouncement}
                 deleteAnnouncement={deleteAnnouncement}
               />
@@ -131,10 +135,12 @@ export default async function Announcements() {
 
 function AnnouncementCard({
   announcement: a,
+  tz,
   toggleAnnouncement,
   deleteAnnouncement,
 }: {
   announcement: any
+  tz: string
   toggleAnnouncement: (id: string, current: boolean) => Promise<void>
   deleteAnnouncement: (id: string) => Promise<void>
 }) {
@@ -153,7 +159,7 @@ function AnnouncementCard({
               </span>
             )}
             <span className="text-gray-600 text-xs">
-              {new Date(a.created_at).toLocaleDateString()}
+              {fmtDate(a.created_at, tz)} · {fmtTime(a.created_at, tz)}
             </span>
           </div>
           <p className="text-white font-bold mb-1">{a.title}</p>

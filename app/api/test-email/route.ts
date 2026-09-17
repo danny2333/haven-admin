@@ -1,48 +1,33 @@
-import nodemailer from "nodemailer"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { Resend } from "resend"
+import { isAdminAuthed } from "@/lib/auth"
 
-export async function GET() {
-  const user = process.env.GMAIL_USER
-  const pass = process.env.GMAIL_APP_PASSWORD
-
-  if (!user || !pass) {
-    return NextResponse.json({ error: "Env vars missing", user: !!user, pass: !!pass }, { status: 500 })
+export async function GET(req: NextRequest) {
+  if (!isAdminAuthed(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: { user, pass },
-  })
-
-  // Step 1: verify connection
-  try {
-    await transporter.verify()
-  } catch (e: any) {
-    return NextResponse.json({
-      step: "verify",
-      error: e.message,
-      code: e.code,
-      response: e.response,
-    }, { status: 500 })
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({ error: "RESEND_API_KEY env var missing" }, { status: 500 })
   }
 
-  // Step 2: send test email to yourself
   try {
-    const info = await transporter.sendMail({
-      from: `"Haven Test" <${user}>`,
-      to: user,
+    const resend = new Resend(apiKey)
+    const { data, error } = await resend.emails.send({
+      from: "Haven <noreply@gethavenapp.xyz>",
+      replyTo: "havenapp2026@gmail.com",
+      to: "havenapp2026@gmail.com",
       subject: "Haven admin email test",
-      text: "If you receive this, email is working correctly.",
+      html: "<p>If you receive this, Resend is working correctly.</p>",
     })
-    return NextResponse.json({ success: true, messageId: info.messageId })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, id: data?.id })
   } catch (e: any) {
-    return NextResponse.json({
-      step: "send",
-      error: e.message,
-      code: e.code,
-      response: e.response,
-    }, { status: 500 })
+    return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }

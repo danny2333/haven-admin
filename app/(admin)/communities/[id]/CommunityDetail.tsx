@@ -1,7 +1,10 @@
 "use client"
 
+import Link from "next/link"
+import Image from "next/image"
 import { startTransition, useState } from "react"
 import { deleteCommunityPost, removeMember } from "./actions"
+import { fmtDate } from "@/lib/date"
 
 type Post = {
   id: string
@@ -24,10 +27,12 @@ type Member = {
 
 export default function CommunityDetail({
   communityId,
+  tz,
   posts: initialPosts,
   members: initialMembers,
 }: {
   communityId: string
+  tz: string
   posts: Post[]
   members: Member[]
 }) {
@@ -98,7 +103,7 @@ export default function CommunityDetail({
                       <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-gray-400">{post.flair}</span>
                     )}
                     <span className="text-gray-600 text-xs">
-                      {new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {fmtDate(post.created_at, tz)}
                     </span>
                   </div>
                   {post.title && (
@@ -108,7 +113,15 @@ export default function CommunityDetail({
                     <p className="text-gray-400 text-sm leading-relaxed line-clamp-4">{post.content}</p>
                   )}
                   {post.image_url && (
-                    <p className="text-[#e378ac] text-xs mt-2">📎 Has image</p>
+                    <Image
+                      src={post.image_url}
+                      alt="Post image"
+                      width={384}
+                      height={256}
+                      loading="lazy"
+                      className="mt-3 rounded-xl max-h-64 max-w-sm object-cover border border-[#2a2a2a]"
+                      style={{ width: "auto", height: "auto", maxHeight: "16rem", maxWidth: "24rem" }}
+                    />
                   )}
                 </div>
                 <button
@@ -144,7 +157,11 @@ export default function CommunityDetail({
             <tbody>
               {members.map((m, i) => (
                 <tr key={m.user_id} className={`border-b border-[#1f1f1f] ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
-                  <td className="px-6 py-4 text-gray-300">@{m.profile?.username ?? "unknown"}</td>
+                  <td className="px-6 py-4">
+                    <Link href={`/users/${m.user_id}`} className="text-[#e378ac] hover:underline font-semibold">
+                      @{m.profile?.username ?? "unknown"}
+                    </Link>
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
                       m.role === "admin"
@@ -155,7 +172,7 @@ export default function CommunityDetail({
                     </span>
                   </td>
                   <td className="px-6 py-4 text-gray-500">
-                    {new Date(m.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    {fmtDate(m.created_at, tz)}
                   </td>
                   <td className="px-6 py-4">
                     {m.role !== "admin" && (

@@ -65,11 +65,15 @@ function Item({ label, sub }: { label: string; sub: string }) {
 }
 
 export default function NotificationBell({ waitlist, requests, reports, newUsers }: Props) {
-  const [open, setOpen] = useState(false)
-  const ref  = useRef<HTMLDivElement>(null)
+  const [open, setOpen]     = useState(false)
+  const [toast, setToast]   = useState<{ username: string } | null>(null)
+  const [liveUsers, setLiveUsers] = useState<NewUserItem[]>(newUsers)
+  const ref = useRef<HTMLDivElement>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const total = waitlist.length + requests.length + reports.length
 
+  // Dismiss on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -78,10 +82,43 @@ export default function NotificationBell({ waitlist, requests, reports, newUsers
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  const allEmpty = total === 0 && newUsers.length === 0
+  // Poll for new users every 30s
+  useEffect(() => {
+    const since = new Date().toISOString()
+    const poll = async () => {
+      const res = await fetch(`/api/new-users?since=${encodeURIComponent(since)}`)
+      const { users } = await res.json()
+      if (!users?.length) return
+      setLiveUsers((prev: NewUserItem[]) => {
+        const existingIds = new Set(prev.map((u: NewUserItem) => u.id))
+        const fresh = users.filter((u: NewUserItem) => !existingIds.has(u.id))
+        if (!fresh.length) return prev
+        const newest = fresh[0]
+        setToast({ username: newest.username })
+        if (toastTimer.current) clearTimeout(toastTimer.current)
+        toastTimer.current = setTimeout(() => setToast(null), 5000)
+        return [...fresh, ...prev].slice(0, 10)
+      })
+    }
+    const id = setInterval(poll, 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const allEmpty = total === 0 && liveUsers.length === 0
 
   return (
     <div className="relative" ref={ref}>
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-[100] flex items-center gap-3 bg-[#1a1a1a] border border-[#e378ac]/40 text-white px-4 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-right-4 fade-in duration-300">
+          <span className="text-xl">🌸</span>
+          <div>
+            <p className="text-sm font-black">New member joined!</p>
+            <p className="text-xs text-[#e378ac] font-semibold">@{toast.username}</p>
+          </div>
+          <button onClick={() => setToast(null)} className="ml-2 text-gray-500 hover:text-white text-lg leading-none">×</button>
+        </div>
+      )}
       <button
         onClick={() => setOpen(p => !p)}
         className="relative flex items-center gap-2 px-3 py-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition"
@@ -150,7 +187,7 @@ export default function NotificationBell({ waitlist, requests, reports, newUsers
               </Section>
 
               {/* New users today */}
-              {newUsers.length > 0 && (
+              {liveUsers.length > 0 && (
                 <div>
                   <Link
                     href="/users"
@@ -162,17 +199,17 @@ export default function NotificationBell({ waitlist, requests, reports, newUsers
                         New Today
                       </span>
                       <span className="bg-[#e378ac] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-tight">
-                        {newUsers.length}
+                        {liveUsers.length}
                       </span>
                     </div>
                     <span className="text-gray-600 group-hover:text-[#e378ac] text-xs transition">View all →</span>
                   </Link>
                   <div className="pb-2">
-                    {newUsers.slice(0, 3).map(u => (
+                    {liveUsers.slice(0, 3).map(u => (
                       <Item key={u.id} label={`@${u.username}`} sub={timeAgo(u.created_at)} />
                     ))}
-                    {newUsers.length > 3 && (
-                      <p className="px-4 text-xs text-gray-600 pb-1">+{newUsers.length - 3} more</p>
+                    {liveUsers.length > 3 && (
+                      <p className="px-4 text-xs text-gray-600 pb-1">+{liveUsers.length - 3} more</p>
                     )}
                   </div>
                 </div>

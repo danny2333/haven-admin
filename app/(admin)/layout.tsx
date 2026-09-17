@@ -1,10 +1,13 @@
 import { supabase } from "@/lib/supabase"
+import { localDayStart } from "@/lib/date"
 import AdminSidebar from "@/components/AdminSidebar"
 import NotificationBell from "@/components/NotificationBell"
+import PushRegistrar from "@/components/PushRegistrar"
+
+export const revalidate = 0
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const todayStart = new Date()
-  todayStart.setUTCHours(0, 0, 0, 0)
+  const todayStart = localDayStart()
 
   const [
     { count: waitlistPending },
@@ -27,13 +30,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       .limit(10),
 
     supabase.from("code_requests")
-      .select("id, requested_at, profile:user_id(username)")
+      .select("id, requested_at, user_id")
       .eq("status", "pending")
       .order("requested_at", { ascending: false })
       .limit(10),
 
     supabase.from("reports")
-      .select("id, reason, created_at, reported_user:reported_user_id(username)")
+      .select("id, reason, created_at, reported_user_id")
       .eq("status", "pending")
       .order("created_at", { ascending: false })
       .limit(10),
@@ -44,6 +47,29 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       .order("created_at", { ascending: false })
       .limit(10),
   ])
+
+  // code_requests.user_id and reports.reported_user_id are FKs to auth.users,
+  // not profiles, so PostgREST can't embed profiles(...) directly on them —
+  // look the usernames up separately instead.
+  const lookupIds = [
+    ...new Set([
+      ...(requestItems ?? []).map(r => r.user_id),
+      ...(reportItems ?? []).map(r => r.reported_user_id),
+    ].filter(Boolean)),
+  ]
+  const { data: lookupProfiles } = lookupIds.length > 0
+    ? await supabase.from("profiles").select("id, username").in("id", lookupIds)
+    : { data: [] as { id: string; username: string }[] }
+  const usernameById = new Map((lookupProfiles ?? []).map(p => [p.id, p.username]))
+
+  const requestItemsWithProfile = (requestItems ?? []).map(r => ({
+    ...r,
+    profile: r.user_id ? { username: usernameById.get(r.user_id) ?? null } : null,
+  }))
+  const reportItemsWithProfile = (reportItems ?? []).map(r => ({
+    ...r,
+    reported_user: r.reported_user_id ? { username: usernameById.get(r.reported_user_id) ?? null } : null,
+  }))
 
   return (
     <div className="flex min-h-screen bg-[#0f0f0f]">
@@ -61,12 +87,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div />
           <NotificationBell
             waitlist={waitlistItems  ?? []}
-            requests={requestItems  ?? []}
-            reports={reportItems   ?? []}
+            requests={requestItemsWithProfile}
+            reports={reportItemsWithProfile}
             newUsers={newUserItems  ?? []}
           />
         </div>
 
+        <PushRegistrar />
         <main className="flex-1 p-8">
           {children}
         </main>

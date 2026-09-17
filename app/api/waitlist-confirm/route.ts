@@ -1,10 +1,16 @@
 import { sendWaitlistConfirmationEmail } from "@/lib/email"
+import { isWebhookAuthed } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 
 // Called by a Supabase Database Webhook on INSERT to the waitlist table.
 // Setup in Supabase Dashboard → Database → Webhooks → Create new webhook:
 //   Table: waitlist | Event: INSERT | URL: https://your-admin-url/api/waitlist-confirm
+//   Header: x-webhook-secret: <WEBHOOK_SECRET env var>
 export async function POST(req: NextRequest) {
+  if (!isWebhookAuthed(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   try {
     const body = await req.json()
 
