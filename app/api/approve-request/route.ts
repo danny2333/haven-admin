@@ -54,14 +54,14 @@ export async function POST(req: NextRequest) {
   })
   if (notifError) console.error("[approve-request] notification insert failed:", notifError.message, notifError.details)
 
-  // Send push notification
-  const { data: profile } = await supabase.from("profiles").select("push_token").eq("id", userId).single()
-  if (profile?.push_token) {
+  // Send push notification — push tokens live in push_tokens, not profiles
+  const { data: pushRow } = await supabase.from("push_tokens").select("token").eq("user_id", userId).maybeSingle()
+  if (pushRow?.token) {
     await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: { "Accept": "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
-        to: profile.push_token,
+        to: pushRow.token,
         title: "Code request approved 🎉",
         body: `Your request was approved — ${count} new invite code${count !== 1 ? "s" : ""} added to your profile.`,
         data: { type: "code_request_approved" },

@@ -28,23 +28,23 @@ export async function POST(req: NextRequest) {
   if (codeRes.error) console.error("code_requests update error:", codeRes.error)
   if (notifRes.error) console.error("notifications insert error:", notifRes.error)
 
-  // Fetch push token
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("push_token")
-    .eq("id", userId)
-    .single()
+  // Fetch push token — push tokens live in push_tokens, not profiles
+  const { data: pushRow, error: pushErr } = await supabase
+    .from("push_tokens")
+    .select("token")
+    .eq("user_id", userId)
+    .maybeSingle()
 
-  if (profileErr) console.error("profile fetch error:", profileErr)
-  console.log("push_token:", profile?.push_token)
+  if (pushErr) console.error("push token fetch error:", pushErr)
+  console.log("push_token:", pushRow?.token)
 
   // Send push notification
-  if (profile?.push_token) {
+  if (pushRow?.token) {
     const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: { "Accept": "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
-        to: profile.push_token,
+        to: pushRow.token,
         title: "Code request update",
         body: "Your request for more invite codes wasn't approved. Tap to see why.",
         data: { type: "code_request_rejected" },

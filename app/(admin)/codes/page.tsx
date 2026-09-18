@@ -42,7 +42,16 @@ async function deleteAllUnused() {
 
 async function deleteAllExpired() {
   "use server"
-  await supabase.from("invite_codes").delete().is("used_by", null).lt("expires_at", new Date().toISOString())
+  // used_by alone isn't enough — it gets cleared to null if the redeemer's
+  // account is later deleted, but used_at stays set as the permanent record
+  // that the code really was used. Checking only used_by could delete a
+  // genuinely-used code that just happens to belong to a deleted account.
+  await supabase
+    .from("invite_codes")
+    .delete()
+    .is("used_by", null)
+    .is("used_at", null)
+    .lt("expires_at", new Date().toISOString())
   revalidatePath("/codes")
 }
 
@@ -85,7 +94,10 @@ export default async function Codes() {
   }))
 
   const now = new Date().toISOString()
-  const expiredCount = codes.filter((c: any) => !c.redeemer && c.expires_at && c.expires_at < now).length
+  // Matches deleteAllExpired's own filter exactly (used_at, not just
+  // redeemer/used_by, which gets cleared to null if the account is deleted)
+  // so the count shown always matches what the button actually deletes.
+  const expiredCount = codes.filter((c: any) => !c.used_at && c.expires_at && c.expires_at < now).length
 
   return (
     <div>
