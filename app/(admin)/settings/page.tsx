@@ -21,13 +21,6 @@ const TIMEZONES = [
   { label: "Lagos (WAT, UTC+1)",               value: "Africa/Lagos" },
 ]
 
-async function toggleBeta(value: string) {
-  "use server"
-  const next = value === "true" ? "false" : "true"
-  await supabase.from("app_settings").update({ value: next }).eq("key", "beta_open")
-  revalidatePath("/settings")
-}
-
 async function saveTZ(formData: FormData) {
   "use server"
   const tz = formData.get("tz") as string
@@ -52,7 +45,6 @@ async function saveTZ(formData: FormData) {
 
 export default async function Settings() {
   const { data: settings } = await supabase.from("app_settings").select("*")
-  const betaOpen = settings?.find(s => s.key === "beta_open")?.value === "true"
   const currentTZ = await getAdminTZ()
 
   const nowPreview = new Date().toLocaleString("en-US", {
@@ -66,28 +58,6 @@ export default async function Settings() {
       <p className="text-gray-500 text-sm mb-8">Control Haven from here</p>
 
       <div className="flex flex-col gap-4 max-w-lg">
-
-        {/* Beta toggle */}
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-bold text-white mb-1">Beta Signups</p>
-              <p className="text-gray-500 text-sm">
-                {betaOpen
-                  ? "Open — anyone with a code can sign up"
-                  : "Paused — no new signups even with a valid code"}
-              </p>
-            </div>
-            <form action={toggleBeta.bind(null, betaOpen ? "true" : "false")}>
-              <button className={`relative w-14 h-7 rounded-full transition-colors ${betaOpen ? "bg-[#e378ac]" : "bg-gray-700"}`}>
-                <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${betaOpen ? "translate-x-8" : "translate-x-1"}`} />
-              </button>
-            </form>
-          </div>
-          <div className={`mt-4 text-xs px-3 py-2 rounded-xl ${betaOpen ? "bg-green-400/10 text-green-400" : "bg-red-400/10 text-red-400"}`}>
-            Status: {betaOpen ? "✓ Signups are OPEN" : "✗ Signups are PAUSED"}
-          </div>
-        </div>
 
         {/* Timezone picker */}
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-6">
