@@ -6,7 +6,7 @@ import { fmtDate, fmtDateTime, fmtTime, getAdminTZ } from "@/lib/date"
 import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 const parseImageUrls = (raw: string | null): string[] => {
   if (!raw) return []
@@ -143,10 +143,23 @@ async function deleteUserAccount(userId: string) {
   // Delete unused invite codes first (used codes keep their referential history)
   await supabase.from("invite_codes").delete().eq("created_by", userId).is("used_by", null)
   // Delete profile + all DB data (posts, follows, etc. cascade via FK)
-  await supabase.from("profiles").delete().eq("id", userId)
+  const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId)
+  if (profileError) {
+    console.error("deleteUserAccount: profile delete failed:", profileError.message)
+    return { error: `Couldn't delete profile data: ${profileError.message}` }
+  }
   // Revoke the auth account — immediately invalidates all active sessions
-  await supabase.auth.admin.deleteUser(userId)
+  const { error: authError } = await supabase.auth.admin.deleteUser(userId)
+  if (authError) {
+    console.error("deleteUserAccount: auth delete failed:", authError.message)
+    return { error: `Profile data was deleted, but removing the login failed: ${authError.message}` }
+  }
   revalidatePath("/users")
+  // Without this, the admin stays on this now-defunct user's own detail
+  // page, which immediately 404s on the next render (its .single() query
+  // finds nothing) — looking exactly like the delete silently failed, even
+  // when it fully succeeded.
+  redirect("/users")
 }
 
 async function giveUserCodes(userId: string, count: number) {
