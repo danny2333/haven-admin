@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase"
-import { localDayStart } from "@/lib/date"
+import { getAdminTZ, localDayStart } from "@/lib/date"
 import AdminSidebar from "@/components/AdminSidebar"
 import NotificationBell from "@/components/NotificationBell"
 import PushRegistrar from "@/components/PushRegistrar"
@@ -7,7 +7,8 @@ import PushRegistrar from "@/components/PushRegistrar"
 export const revalidate = 0
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const todayStart = localDayStart()
+  const tz = await getAdminTZ()
+  const todayStart = localDayStart(tz)
 
   const [
     { count: waitlistPending },

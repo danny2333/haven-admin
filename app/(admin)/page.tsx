@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic"
 
 import { supabase } from "@/lib/supabase"
-import { localDayStart } from "@/lib/date"
+import { getAdminTZ, localDayStart } from "@/lib/date"
 
 async function getStats() {
-  const todayStart = localDayStart()
+  const tz = await getAdminTZ()
+  const todayStart = localDayStart(tz)
 
   // A streak is active only if the user posted within the last 48 hours
   const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split("T")[0]

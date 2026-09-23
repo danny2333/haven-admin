@@ -76,7 +76,7 @@ export default async function Users({ searchParams }: { searchParams: { q?: stri
   const q      = searchParams.q?.toLowerCase().trim() ?? ""
   const filter = FILTERS.find(f => f.value === searchParams.filter)?.value ?? "all"
 
-  const todayStart = localDayStart()
+  const todayStart = localDayStart(tz)
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
   let query = supabase

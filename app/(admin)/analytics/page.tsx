@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { getAdminTZ, localDayStart } from "@/lib/date"
 
 function getAgeRange(dob: string | null): string {
   if (!dob) return "Unknown"
@@ -24,7 +25,8 @@ function sorted(obj: Record<string, number>): [string, number][] {
 
 export default async function Analytics() {
   const now = new Date()
-  const todayStart  = new Date(now); todayStart.setHours(0,0,0,0)
+  const tz = await getAdminTZ()
+  const todayStart  = localDayStart(tz)
   const weekStart   = new Date(now); weekStart.setDate(now.getDate() - 7)
   const monthStart  = new Date(now); monthStart.setDate(now.getDate() - 30)
 
