@@ -14,6 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { count: waitlistPending },
     { count: requestsPending },
     { count: reportsPending },
+    { count: crashesUnresolved },
     { data: waitlistItems },
     { data: requestItems },
     { data: reportItems },
@@ -22,6 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     supabase.from("waitlist").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("reports").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("crash_reports").select("id", { count: "exact", head: true }).eq("resolved", false),
 
     // Detailed items for the bell dropdown
     supabase.from("waitlist")
@@ -79,6 +81,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           waitlist: waitlistPending ?? 0,
           requests: requestsPending ?? 0,
           reports:  reportsPending  ?? 0,
+          crashes:  crashesUnresolved ?? 0,
         }}
       />
 

@@ -13,6 +13,7 @@ const NAV = [
   { href: "/journal",      label: "Journal",        icon: "📓" },
   { href: "/communities",  label: "Communities",    icon: "🏘️" },
   { href: "/reports",      label: "Reports",        icon: "🚨", countKey: "reports" },
+  { href: "/crashes",      label: "Crashes",        icon: "💥", countKey: "crashes" },
   { href: "/analytics",    label: "Analytics",      icon: "📊" },
   { href: "/referrals",    label: "Referrals",      icon: "🏆" },
   { href: "/broadcast",    label: "Broadcast DM",   icon: "💌" },
@@ -21,7 +22,7 @@ const NAV = [
   { href: "/system-health",  label: "System Health", icon: "🩺" },
 ]
 
-type Counts = { waitlist: number; requests: number; reports: number }
+type Counts = { waitlist: number; requests: number; reports: number; crashes: number }
 
 export default function AdminSidebar({ counts }: { counts: Counts }) {
   const pathname = usePathname()
