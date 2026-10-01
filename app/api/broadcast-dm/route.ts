@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import { isAdminAuthed } from "@/lib/auth"
+import { broadcastPush } from "@/lib/pushBroadcast"
 import { NextRequest, NextResponse } from "next/server"
 
 const HAVEN_ID = "b8ba29ea-8cb9-45e3-bd0e-f9e05fb2f1c6"
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
   let sent = 0
   let errors = 0
+  const sentUserIds: string[] = []
 
   // Process in batches of 50 to avoid DB overload
   const BATCH = 50
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
             .eq("id", convoId)
 
           sent++
+          sentUserIds.push(userId)
         } catch {
           errors++
         }
@@ -83,5 +86,12 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ sent, errors, total: profiles.length })
+  const { sent: pushed } = await broadcastPush(
+    "Haven 💌",
+    preview,
+    { type: "dm", conversationId: null },
+    sentUserIds
+  )
+
+  return NextResponse.json({ sent, errors, total: profiles.length, pushed })
 }

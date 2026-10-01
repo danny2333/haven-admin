@@ -4,7 +4,7 @@ import { useState } from "react"
 export default function BroadcastDM() {
   const [message, setMessage] = useState("")
   const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<{ sent: number; errors: number; total: number } | null>(null)
+  const [result, setResult] = useState<{ sent: number; errors: number; total: number; pushed?: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleSend = async () => {
@@ -89,6 +89,9 @@ export default function BroadcastDM() {
             </p>
             {result.errors > 0 && (
               <p className="text-yellow-400 text-xs mt-1">{result.errors} failed — check server logs</p>
+            )}
+            {typeof result.pushed === "number" && (
+              <p className="text-gray-500 text-xs mt-1">{result.pushed.toLocaleString()} push notification{result.pushed !== 1 ? "s" : ""} sent</p>
             )}
           </div>
         )}

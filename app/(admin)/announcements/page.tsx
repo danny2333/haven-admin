@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import { fmtDate, fmtTime, getAdminTZ } from "@/lib/date"
+import { broadcastPush } from "@/lib/pushBroadcast"
 import { revalidatePath } from "next/cache"
 
 async function createAnnouncement(formData: FormData) {
@@ -9,6 +10,7 @@ async function createAnnouncement(formData: FormData) {
   const type = (formData.get("type") as string) || "info"
   if (!title || !message) return
   await supabase.from("announcements").insert([{ title, message, type, is_active: true }])
+  await broadcastPush(title, message, { type: "announcement" })
   revalidatePath("/announcements")
 }
 
