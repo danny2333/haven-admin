@@ -1,5 +1,7 @@
 "use client"
 import { useState } from "react"
+import { getPostReplies, type PostReply } from "@/app/(admin)/posts/actions"
+import VoiceNotePlayer from "./VoiceNotePlayer"
 
 type TextCard = {
   text: string; bg: string; textColor: string
@@ -27,6 +29,7 @@ function parseImageUrls(raw: string | null): string[] {
 }
 
 type Props = {
+  postId: string
   username: string | null
   isAnonymous: boolean
   headline?: string | null
@@ -36,17 +39,31 @@ type Props = {
   category?: string | null
 }
 
-export default function PostViewModal({ username, isAnonymous, headline, content, imageUrl, createdAt, category }: Props) {
+export default function PostViewModal({ postId, username, isAnonymous, headline, content, imageUrl, createdAt, category }: Props) {
   const [open, setOpen] = useState(false)
   const [imgIdx, setImgIdx] = useState(0)
+  const [replies, setReplies] = useState<PostReply[] | null>(null)
+  const [repliesLoading, setRepliesLoading] = useState(false)
+  const [repliesError, setRepliesError] = useState<string | null>(null)
 
   const tc = parseTextCard(imageUrl)
   const imgs = parseImageUrls(imageUrl)
 
+  const openModal = async () => {
+    setOpen(true)
+    setImgIdx(0)
+    if (replies !== null) return
+    setRepliesLoading(true)
+    const { data, error } = await getPostReplies(postId)
+    setReplies(data)
+    setRepliesError(error)
+    setRepliesLoading(false)
+  }
+
   return (
     <>
       <button
-        onClick={() => { setOpen(true); setImgIdx(0) }}
+        onClick={openModal}
         className="text-[#e378ac] text-xs font-bold hover:underline transition"
       >
         View
@@ -164,6 +181,52 @@ export default function PostViewModal({ username, isAnonymous, headline, content
               {!tc && !headline && !content && imgs.length === 0 && (
                 <p className="text-gray-600 italic text-sm">No content to display.</p>
               )}
+
+              {/* Replies — real author always shown, regardless of is_anonymous.
+                  Anonymity on replies only ever existed in the main app's UI
+                  (a letter label like "A"/"B"); the row itself always stores
+                  the real user_id, so there's nothing to de-anonymize here. */}
+              <div className="pt-2 border-t border-[#1f1f1f]">
+                <p className="text-gray-500 text-[10px] uppercase tracking-widest mb-2">
+                  Replies{replies ? ` (${replies.length})` : ""}
+                  {isAnonymous && <span className="normal-case text-purple-400/70 font-normal"> — real identities</span>}
+                </p>
+                {repliesLoading && <p className="text-gray-600 text-sm italic">Loading replies…</p>}
+                {repliesError && <p className="text-red-400 text-sm">Couldn't load replies: {repliesError}</p>}
+                {!repliesLoading && !repliesError && replies?.length === 0 && (
+                  <p className="text-gray-600 text-sm italic">No replies yet.</p>
+                )}
+                {!repliesLoading && replies && replies.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    {replies.map(r => (
+                      <div key={r.id} className="flex gap-2.5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {r.avatar_url ? (
+                          <img src={r.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-[#2a2a2a] shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[#e378ac] font-bold text-xs">@{r.username ?? "unknown"}</span>
+                            {r.display_name && <span className="text-gray-500 text-xs">{r.display_name}</span>}
+                            {r.email && <span className="text-gray-600 text-[10px]">· {r.email}</span>}
+                          </div>
+                          {r.content && (
+                            <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap mt-0.5">{r.content}</p>
+                          )}
+                          {r.voice_url && (
+                            <div className="mt-1.5"><VoiceNotePlayer url={r.voice_url} /></div>
+                          )}
+                          <p className="text-gray-700 text-[10px] mt-0.5">
+                            {new Date(r.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

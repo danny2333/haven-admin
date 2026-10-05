@@ -301,6 +301,7 @@ export default async function Posts({ searchParams }: { searchParams: { filter?:
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3 justify-end">
                       <PostViewModal
+                        postId={p.id}
                         username={(p.profiles as any)?.username ?? null}
                         isAnonymous={p.is_anonymous}
                         headline={(p as any).headline ?? null}
