@@ -41,6 +41,33 @@ export async function getAmbassadorReferrals(ambassadorId: string): Promise<{ da
   return { data: (data ?? []) as ReferralRow[], error: null }
 }
 
+export type ProfileSuggestion = {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+}
+
+// Typeahead for the "make ambassador" form — excludes people who are
+// already ambassadors so the list only ever shows people you can actually assign.
+export async function searchProfiles(query: string): Promise<ProfileSuggestion[]> {
+  const q = query.trim().replace(/^@/, "")
+  if (q.length < 2) return []
+
+  const [{ data: profiles }, { data: existing }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .ilike("username", `${q}%`)
+      .order("username")
+      .limit(8),
+    supabase.from("ambassadors").select("user_id"),
+  ])
+
+  const alreadyAmbassador = new Set((existing ?? []).map(a => a.user_id))
+  return (profiles ?? []).filter(p => !alreadyAmbassador.has(p.id))
+}
+
 export async function createAmbassador(formData: FormData): Promise<{ error: string | null }> {
   const username = (formData.get("username") as string)?.trim().replace(/^@/, "")
   const campus = (formData.get("campus") as string)?.trim() || null
