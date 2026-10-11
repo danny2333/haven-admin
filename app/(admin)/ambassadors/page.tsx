@@ -25,7 +25,8 @@ export default async function AmbassadorsPage() {
     const qualifiedThisMonth = referrals.filter(r => r.payout_month === currentMonth).length
     const lifetimeQualified = referrals.filter(r => r.status === "qualified" || r.payout_month).length
     const used = referrals.filter(r => r.used_by).length
-    return { ambassador: a, qualifiedThisMonth, lifetimeQualified, codesUsed: used, codesTotal: referrals.length }
+    const capQAUs = Math.floor(a.monthly_cap_cents / a.rate_cents)
+    return { ambassador: a, qualifiedThisMonth, lifetimeQualified, codesUsed: used, codesTotal: referrals.length, capQAUs }
   }))
 
   rows.sort((a, b) => b.qualifiedThisMonth - a.qualifiedThisMonth)
@@ -34,7 +35,7 @@ export default async function AmbassadorsPage() {
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Ambassador Program</h2>
       <p className="text-gray-500 text-sm mb-8">
-        {ambassadors?.length ?? 0} ambassador{(ambassadors?.length ?? 0) !== 1 ? "s" : ""} · $5 / qualified user · $350 monthly cap
+        {ambassadors?.length ?? 0} ambassador{(ambassadors?.length ?? 0) !== 1 ? "s" : ""} · $5 / qualified user · $200 monthly cap
       </p>
 
       {/* Add ambassador */}
@@ -58,7 +59,7 @@ export default async function AmbassadorsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ ambassador: a, qualifiedThisMonth, lifetimeQualified, codesUsed, codesTotal }, i) => {
+            {rows.map(({ ambassador: a, qualifiedThisMonth, lifetimeQualified, codesUsed, codesTotal, capQAUs }, i) => {
               const profile = a.profiles as any
               return (
                 <tr key={a.id} className={`border-b border-[#1f1f1f] ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
@@ -83,7 +84,7 @@ export default async function AmbassadorsPage() {
                   <td className="px-6 py-4 text-gray-400">{codesUsed} / {codesTotal}</td>
                   <td className="px-6 py-4">
                     <span className="text-white font-bold">{qualifiedThisMonth}</span>
-                    <span className="text-gray-600 text-xs"> / 70</span>
+                    <span className="text-gray-600 text-xs"> / {capQAUs}</span>
                   </td>
                   <td className="px-6 py-4 text-gray-400">{lifetimeQualified}</td>
                   <td className="px-6 py-4 text-right">
