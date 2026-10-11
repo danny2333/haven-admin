@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase"
 import { fmtDate, getAdminTZ } from "@/lib/date"
+import { broadcastPush } from "@/lib/pushBroadcast"
 import { revalidatePath } from "next/cache"
 import nodemailer from "nodemailer"
 
@@ -99,6 +100,18 @@ export async function createAmbassador(formData: FormData): Promise<{ error: str
   if (insertError) return { error: insertError.message }
 
   await supabase.from("profiles").update({ is_ambassador: true }).eq("id", profile.id)
+
+  await supabase.from("notifications").insert([{
+    user_id: profile.id,
+    type: "ambassador_welcome",
+    from_user_id: null,
+  }])
+  await broadcastPush(
+    "Welcome to the Haven Ambassador Program 🎓",
+    "Tap to see what you'll be doing and what you'll earn.",
+    { type: "ambassador_welcome" },
+    [profile.id],
+  )
 
   revalidatePath("/ambassadors")
   return { error: null }
