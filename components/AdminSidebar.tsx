@@ -16,6 +16,7 @@ const NAV = [
   { href: "/crashes",      label: "Crashes",        icon: "💥", countKey: "crashes" },
   { href: "/analytics",    label: "Analytics",      icon: "📊" },
   { href: "/referrals",    label: "Referrals",      icon: "🏆" },
+  { href: "/ambassadors",  label: "Ambassadors",    icon: "🎓" },
   { href: "/broadcast",    label: "Broadcast DM",   icon: "💌" },
   { href: "/announcements",label: "Announcements",  icon: "📣" },
   { href: "/settings",       label: "Settings",      icon: "⚙️" },
