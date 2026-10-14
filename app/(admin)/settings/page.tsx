@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 import { getAdminTZ } from "@/lib/date"
+import MaintenanceModeCard from "@/components/MaintenanceModeCard"
 
 const TIMEZONES = [
   { label: "UTC",                              value: "UTC" },
@@ -47,6 +48,10 @@ export default async function Settings() {
   const { data: settings } = await supabase.from("app_settings").select("*")
   const currentTZ = await getAdminTZ()
 
+  const settingsMap = Object.fromEntries((settings ?? []).map(s => [s.key, s.value]))
+  const maintenanceEnabled = settingsMap.maintenance_mode === "true"
+  const maintenanceMessage = settingsMap.maintenance_message ?? "Haven is temporarily down for maintenance. We'll be back soon."
+
   const nowPreview = new Date().toLocaleString("en-US", {
     timeZone: currentTZ, month: "short", day: "numeric",
     year: "numeric", hour: "numeric", minute: "2-digit",
@@ -58,6 +63,8 @@ export default async function Settings() {
       <p className="text-gray-500 text-sm mb-8">Control Haven from here</p>
 
       <div className="flex flex-col gap-4 max-w-lg">
+
+        <MaintenanceModeCard initialEnabled={maintenanceEnabled} initialMessage={maintenanceMessage} />
 
         {/* Timezone picker */}
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-6">
