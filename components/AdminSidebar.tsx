@@ -15,6 +15,7 @@ const NAV = [
   { href: "/reports",      label: "Reports",        icon: "🚨", countKey: "reports" },
   { href: "/crashes",      label: "Crashes",        icon: "💥", countKey: "crashes" },
   { href: "/analytics",    label: "Analytics",      icon: "📊" },
+  { href: "/activity",     label: "Activity",       icon: "📶" },
   { href: "/referrals",    label: "Referrals",      icon: "🏆" },
   { href: "/ambassadors",  label: "Ambassadors",    icon: "🎓" },
   { href: "/broadcast",    label: "Broadcast DM",   icon: "💌" },
