@@ -30,6 +30,16 @@ export default async function Analytics() {
   const weekStart   = new Date(now); weekStart.setDate(now.getDate() - 7)
   const monthStart  = new Date(now); monthStart.setDate(now.getDate() - 30)
 
+  // DAU/WAU/MAU come from user_active_days (an append-only daily log written
+  // by a dedicated record_active_day() RPC) rather than profiles.last_seen_at.
+  // last_seen_at is a single mutable column overwritten in place, and it's
+  // been silently failing to update for some genuinely active users (found
+  // by cross-checking against their real post history) -- a day-level log
+  // degrades gracefully instead of losing the whole history to one failed
+  // write. Supabase JS has no count-distinct aggregate, so these are deduped
+  // client-side; fine at this scale.
+  const toDateStr = (d: Date) => d.toISOString().slice(0, 10)
+
   const [
     { data: profiles },
     { count: totalPosts },
@@ -37,9 +47,9 @@ export default async function Analytics() {
     { count: newToday },
     { count: newWeek },
     { count: newMonth },
-    { count: dau },
-    { count: wau },
-    { count: mau },
+    { data: activeToday },
+    { data: activeWeek },
+    { data: activeMonth },
   ] = await Promise.all([
     supabase.from("profiles").select("id, date_of_birth, location, interests, is_student, created_at").limit(5000),
     supabase.from("posts").select("id", { count: "exact", head: true }),
@@ -47,10 +57,14 @@ export default async function Analytics() {
     supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
     supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", weekStart.toISOString()),
     supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", monthStart.toISOString()),
-    supabase.from("profiles").select("id", { count: "exact", head: true }).gte("last_seen_at", todayStart.toISOString()),
-    supabase.from("profiles").select("id", { count: "exact", head: true }).gte("last_seen_at", weekStart.toISOString()),
-    supabase.from("profiles").select("id", { count: "exact", head: true }).gte("last_seen_at", monthStart.toISOString()),
+    supabase.from("user_active_days").select("user_id").gte("day", toDateStr(todayStart)),
+    supabase.from("user_active_days").select("user_id").gte("day", toDateStr(weekStart)),
+    supabase.from("user_active_days").select("user_id").gte("day", toDateStr(monthStart)),
   ])
+
+  const dau = new Set((activeToday ?? []).map(r => r.user_id)).size
+  const wau = new Set((activeWeek ?? []).map(r => r.user_id)).size
+  const mau = new Set((activeMonth ?? []).map(r => r.user_id)).size
 
   const all = profiles ?? []
   const total = all.length
