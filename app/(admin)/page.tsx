@@ -54,7 +54,7 @@ export default async function Dashboard() {
     { label: "Weekly Active Users",  value: stats.wau,          color: "text-emerald-400" },
     { label: "Monthly Active Users", value: stats.mau,          color: "text-emerald-400" },
     { label: "Total Posts",        value: stats.posts,        color: "text-purple-400" },
-    { label: "Daily Posts Today",  value: stats.dailyToday,   color: "text-orange-400" },
+    { label: "Stories Today",      value: stats.dailyToday,   color: "text-orange-400" },
     { label: "Active Streaks",     value: stats.activeStreaks, color: "text-yellow-400" },
     { label: "Waitlist Pending",   value: stats.waitlist,     color: "text-blue-400" },
     { label: "Code Requests",      value: stats.requests,     color: "text-red-400" },

@@ -158,11 +158,16 @@ type Props = {
   messageContent?: { content: string | null; image_url: string | null; sender_id: string } | null
   communityPostContent?: { title: string | null; content: string | null; image_url: string | null; username: string | null; community: string | null } | null
   replyContent?: { text: string | null; voice_url: string | null; username: string | null } | null
+  // A reported story (the app files these with "Daily post <id>" in context).
+  storyContent?: {
+    id: string; text: string; image_url: string | null; created_at: string
+    isRepost: boolean; chapters: string[]; missing?: boolean
+  } | null
 }
 
 export default function ReportCard({
   report: r, reporter, reported,
-  postContent, messageContent, communityPostContent, replyContent,
+  postContent, messageContent, communityPostContent, replyContent, storyContent,
 }: Props) {
   const priority = (r.priority ?? DEFAULT_PRIORITY[r.reason] ?? "p2") as keyof typeof PRIORITY
   const pc = PRIORITY[priority] ?? PRIORITY.p2
@@ -188,6 +193,8 @@ export default function ReportCard({
         note || null,
         r.reported_reply_id ?? null,
         r.reported_community_reply_id ?? null,
+        r.reported_community_post_id ?? null,
+        storyContent && !storyContent.missing ? storyContent.id : null,
       )
       if (error) {
         alert(`Action failed: ${error}`)
@@ -225,7 +232,8 @@ export default function ReportCard({
         {r.reported_community_post_id && <span className="text-xs px-2 py-0.5 rounded-full bg-green-400/10 text-green-400">community post</span>}
         {r.reported_reply_id && <span className="text-xs px-2 py-0.5 rounded-full bg-pink-400/10 text-pink-400">comment</span>}
         {r.reported_community_reply_id && <span className="text-xs px-2 py-0.5 rounded-full bg-teal-400/10 text-teal-400">community comment</span>}
-        {!r.reported_post_id && !r.reported_message_id && !r.reported_community_post_id && !r.reported_reply_id && !r.reported_community_reply_id && (
+        {storyContent && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-400/10 text-orange-400">story</span>}
+        {!storyContent && !r.reported_post_id && !r.reported_message_id && !r.reported_community_post_id && !r.reported_reply_id && !r.reported_community_reply_id && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-[#e378ac]/10 text-[#e378ac]">user</span>
         )}
         <span className="text-xs text-gray-600 ml-auto">
@@ -480,6 +488,34 @@ export default function ReportCard({
               )}
               {!replyContent.text && !replyContent.voice_url && (
                 <p className="text-gray-600 text-xs italic">Comment content not captured</p>
+              )}
+            </div>
+          )}
+
+          {storyContent && (
+            <div className="mb-4 bg-[#111] border border-[#2a2a2a] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <p className="text-gray-500 text-xs uppercase tracking-wide">Reported story</p>
+                {storyContent.isRepost && <span className="text-xs px-2 py-0.5 rounded-full bg-sky-400/10 text-sky-300">repost</span>}
+                {storyContent.chapters.map(c => (
+                  <span key={c} className="text-xs px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-300" title="Public on their profile">📖 {c}</span>
+                ))}
+              </div>
+              {storyContent.missing ? (
+                <p className="text-gray-600 text-xs italic">This story has already been deleted.</p>
+              ) : (
+                <>
+                  <p className="text-xs text-[#e378ac] font-bold mb-2">@{reported?.username ?? "unknown"}</p>
+                  {storyContent.text && <p className="text-gray-300 text-sm leading-relaxed mb-3">{storyContent.text}</p>}
+                  {storyContent.image_url && <ImagePreviewButton urls={[storyContent.image_url]} />}
+                  {!storyContent.text && !storyContent.image_url && !storyContent.isRepost && (
+                    <p className="text-gray-600 text-xs italic">No text or photo</p>
+                  )}
+                  <p className="text-gray-600 text-[11px] mt-2">
+                    Posted {new Date(storyContent.created_at.endsWith("Z") ? storyContent.created_at : `${storyContent.created_at}Z`).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    {" · "}L1+ deletes the story{storyContent.chapters.length ? " and removes it from those chapters" : ""}
+                  </p>
+                </>
               )}
             </div>
           )}

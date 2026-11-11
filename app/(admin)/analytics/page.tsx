@@ -126,7 +126,8 @@ export default async function Analytics() {
           { label: "New this week",  value: (newWeek ?? 0).toLocaleString() },
           { label: "New this month", value: (newMonth ?? 0).toLocaleString() },
           { label: "Total posts",    value: (totalPosts ?? 0).toLocaleString() },
-          { label: "Total dailies",  value: (totalDailies ?? 0).toLocaleString() },
+          // All-time: stories are kept (archive + Chapters) since Nov 2026.
+          { label: "Stories (all time)", value: (totalDailies ?? 0).toLocaleString() },
           { label: "Students",       value: `${studentCount} (${pct(studentCount)}%)` },
           { label: "Non-students",   value: `${nonStudentCount} (${pct(nonStudentCount)}%)` },
         ].map(stat => (

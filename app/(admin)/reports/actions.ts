@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase"
 import { fmtDateTime, getAdminTZ } from "@/lib/date"
+import { deleteStory, parseStoryContent, storagePathInPosts } from "@/lib/stories"
 import { revalidatePath } from "next/cache"
 import nodemailer from "nodemailer"
 
@@ -27,10 +28,12 @@ export async function resolveReport(
   note: string | null,
   replyId: string | null = null,
   communityReplyId: string | null = null,
+  communityPostId: string | null = null,
+  storyId: string | null = null,
 ): Promise<{ error: string | null }> {
   const tz = await getAdminTZ()
   try {
-    // Fetch post content BEFORE deleting so we can include it in the warning email
+    // Fetch the content BEFORE deleting so we can include it in the warning email
     let postSnippet: string | null = null
     if (postId) {
       const { data: post } = await supabase
@@ -39,6 +42,14 @@ export async function resolveReport(
         .eq("id", postId)
         .single()
       postSnippet = post?.headline || (post?.content ? post.content.slice(0, 200) : null)
+    } else if (communityPostId) {
+      const { data: cp } = await supabase
+        .from("community_posts").select("title, content").eq("id", communityPostId).maybeSingle()
+      postSnippet = cp?.title || (cp?.content ? cp.content.slice(0, 200) : null)
+    } else if (storyId) {
+      const { data: story } = await supabase.from("daily_posts").select("content").eq("id", storyId).maybeSingle()
+      const text = parseStoryContent(story?.content ?? null).text
+      postSnippet = text ? text.slice(0, 200) : null
     }
 
     // Fetch reported user's email + username for all levels
@@ -54,6 +65,22 @@ export async function resolveReport(
       if (messageId)       await supabase.from("messages").delete().eq("id", messageId)
       if (replyId)         await supabase.from("replies").delete().eq("id", replyId)
       if (communityReplyId) await supabase.from("community_replies").delete().eq("id", communityReplyId)
+      if (communityPostId) {
+        const { data: cp } = await supabase.from("community_posts").select("image_url").eq("id", communityPostId).maybeSingle()
+        const urls = ((): string[] => {
+          const raw = cp?.image_url
+          if (!raw) return []
+          try { const p = JSON.parse(raw); if (Array.isArray(p)) return p.filter((u: unknown) => typeof u === "string") } catch {}
+          return [raw]
+        })()
+        const paths = urls.map(storagePathInPosts).filter((p): p is string => !!p)
+        if (paths.length) await supabase.storage.from("Posts").remove(paths)
+        await supabase.from("community_posts").delete().eq("id", communityPostId)
+      }
+      if (storyId) {
+        const { error: storyErr } = await deleteStory(storyId)
+        if (storyErr) throw new Error(`Story removal failed: ${storyErr}`)
+      }
     }
 
     // L2 — warn: send email + in-app notification

@@ -46,6 +46,7 @@ const FILTERS = [
   { label: "Friends Only", value: "friends" },
   { label: "Anonymous",    value: "anonymous" },
   { label: "Voice Notes",  value: "voice" },
+  { label: "Archived",     value: "archived" },
   { label: "⚠️ Crisis",    value: "crisis" },
 ]
 
@@ -132,18 +133,21 @@ export default async function Posts({ searchParams }: { searchParams: { filter?:
 
   let query = supabase
     .from("posts")
-    .select("id, content, image_url, headline, is_anonymous, category, created_at, user_id, voice_url, visibility, profiles(username, email)")
+    .select("id, content, image_url, headline, is_anonymous, category, created_at, user_id, voice_url, visibility, archived_at, profiles(username, email)")
     .order("created_at", { ascending: false })
     .limit(100)
 
+  // Archived posts are hidden from everyone in the app (owner included) but
+  // still exist; they show here with an "archived" badge.
   if (filter === "public")    query = query.eq("is_anonymous", false).eq("visibility", "public")
   if (filter === "friends")   query = query.eq("visibility", "friends")
   if (filter === "anonymous") query = query.eq("is_anonymous", true)
   if (filter === "voice")     query = query.not("voice_url", "is", null)
+  if (filter === "archived")  query = query.not("archived_at", "is", null)
   // Crisis: fetch all anon posts, filter by keyword in JS
   if (filter === "crisis")    query = query.eq("is_anonymous", true).limit(500)
 
-  const [{ data: rawPosts }, { count: totalCount }, { count: anonCount }, { count: publicCount }, { count: friendsCount }, { count: voiceCount }, { data: allAnonForCrisis }] = await Promise.all([
+  const [{ data: rawPosts }, { count: totalCount }, { count: anonCount }, { count: publicCount }, { count: friendsCount }, { count: voiceCount }, { data: allAnonForCrisis }, { count: archivedCount }] = await Promise.all([
     query,
     supabase.from("posts").select("id", { count: "exact", head: true }),
     supabase.from("posts").select("id", { count: "exact", head: true }).eq("is_anonymous", true),
@@ -151,6 +155,7 @@ export default async function Posts({ searchParams }: { searchParams: { filter?:
     supabase.from("posts").select("id", { count: "exact", head: true }).eq("visibility", "friends"),
     supabase.from("posts").select("id", { count: "exact", head: true }).not("voice_url", "is", null),
     supabase.from("posts").select("id, content, headline").eq("is_anonymous", true).limit(500),
+    supabase.from("posts").select("id", { count: "exact", head: true }).not("archived_at", "is", null),
   ])
 
   const crisisCount = (allAnonForCrisis ?? []).filter(isCrisis).length
@@ -164,7 +169,7 @@ export default async function Posts({ searchParams }: { searchParams: { filter?:
     <div>
       <h2 className="text-2xl font-black text-white mb-1">Posts</h2>
       <p className="text-gray-500 text-sm mb-4">
-        {totalCount ?? 0} total · {publicCount ?? 0} public · {friendsCount ?? 0} friends-only · {anonCount ?? 0} anonymous · {voiceCount ?? 0} voice notes
+        {totalCount ?? 0} total · {publicCount ?? 0} public · {friendsCount ?? 0} friends-only · {anonCount ?? 0} anonymous · {voiceCount ?? 0} voice notes · {archivedCount ?? 0} archived
       </p>
 
       {crisisCount > 0 && filter !== "crisis" && (
@@ -290,6 +295,14 @@ export default async function Posts({ searchParams }: { searchParams: { filter?:
                       {tc && (
                         <span className="text-xs px-2 py-1 rounded-full font-semibold w-fit bg-indigo-400/10 text-indigo-400">
                           text card
+                        </span>
+                      )}
+                      {(p as any).archived_at && (
+                        <span
+                          className="text-xs px-2 py-1 rounded-full font-semibold w-fit bg-white/5 text-gray-400 border border-white/10"
+                          title={`Archived ${fmtDate((p as any).archived_at, tz)} · hidden from everyone in the app`}
+                        >
+                          archived
                         </span>
                       )}
                     </div>

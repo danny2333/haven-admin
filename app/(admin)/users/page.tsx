@@ -3,6 +3,7 @@ import { fmtDate, fmtTime, getAdminTZ, localDayStart } from "@/lib/date"
 import { revalidatePath } from "next/cache"
 import Link from "next/link"
 import DeleteUserButton from "@/components/DeleteUserButton"
+import { purgeUserStorage } from "@/lib/userStorage"
 
 export const revalidate = 0
 
@@ -54,6 +55,10 @@ async function deleteUser(userId: string) {
   // Step 5 — profile
   const { error: profileErr } = await supabase.from("profiles").delete().eq("id", userId)
   log("profile", profileErr)
+
+  // Step 5b — their uploaded files (stories, chapter covers, photos, voice notes)
+  const purge = await purgeUserStorage(userId)
+  if (purge.errors.length) console.error("deleteUser [storage]:", purge.errors)
 
   // Step 6 — auth user (must be last)
   const { error: authErr } = await supabase.auth.admin.deleteUser(userId)

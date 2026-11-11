@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase"
 import { fmtDate, fmtTime, getAdminTZ } from "@/lib/date"
+import { deleteStory, parseStoryContent, signPostsUrls } from "@/lib/stories"
 import { revalidatePath } from "next/cache"
 import Image from "next/image"
+import Link from "next/link"
 
 export const revalidate = 0
 
@@ -36,89 +38,96 @@ function hasCrisis(text: string): boolean {
   return CRISIS_KEYWORDS.some(kw => lower.includes(kw))
 }
 
-function parseContent(raw: string | null): { text: string; feeling: string; emoji: string; isUpdate: boolean } {
-  if (!raw) return { text: "", feeling: "", emoji: "", isUpdate: false }
-  if (raw.startsWith('{"_type":"update"')) {
-    try {
-      const p = JSON.parse(raw)
-      if (p._type === "update") return { text: p.text || "", feeling: p.feeling || "", emoji: p.emoji || "", isUpdate: true }
-    } catch {}
-  }
-  if (raw.startsWith('{"_l":') || raw.startsWith('{"_layout":')) {
-    try {
-      const sep = raw.indexOf("}") + 1
-      return { text: raw.slice(sep).trim(), feeling: "", emoji: "", isUpdate: false }
-    } catch {}
-  }
-  return { text: raw, feeling: "", emoji: "", isUpdate: false }
-}
+const PAGE_SIZE = 50
 
-function timeLeft(expiresAt: string): string {
-  const exp = new Date(expiresAt.endsWith("Z") ? expiresAt : expiresAt + "Z")
-  const mins = Math.max(0, Math.floor((exp.getTime() - Date.now()) / 60000))
+const asUtc = (s: string) => new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s}Z`)
+
+function timeLeft(expiresAt: string | null): string | null {
+  if (!expiresAt) return null
+  const mins = Math.floor((asUtc(expiresAt).getTime() - Date.now()) / 60000)
+  if (mins <= 0) return null
   if (mins < 60) return `${mins}m left`
   return `${Math.floor(mins / 60)}h ${mins % 60}m left`
 }
 
-async function deleteDaily(id: string, imageUrl: string | null) {
+function firstImage(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  try {
+    const p = JSON.parse(raw)
+    if (Array.isArray(p)) return p.find((u: unknown) => typeof u === "string" && (u as string).startsWith("http")) ?? null
+  } catch {}
+  return raw.startsWith("http") ? raw : null
+}
+
+async function removeStory(id: string) {
   "use server"
-  if (imageUrl?.startsWith("http")) {
-    const marker = "/storage/v1/object/public/Posts/"
-    const idx = imageUrl.indexOf(marker)
-    if (idx !== -1) {
-      await supabase.storage.from("Posts").remove([imageUrl.slice(idx + marker.length).split("?")[0]])
-    }
-  }
-  await supabase.from("daily_posts").delete().eq("id", id)
+  await deleteStory(id)
   revalidatePath("/dailies")
 }
 
-function extractStoragePath(url: string): string | null {
-  // Matches both /object/public/Posts/... and /object/sign/Posts/...
-  const m = url.match(/\/object\/(?:public|sign)\/Posts\/(.+?)(?:\?|$)/)
-  return m ? m[1] : null
-}
-
-async function signImageUrl(url: string | null): Promise<string | null> {
-  if (!url?.startsWith("http")) return null
-  const path = extractStoragePath(url)
-  if (!path) return url
-  const { data } = await supabase.storage.from("Posts").createSignedUrl(path, 3600)
-  return data?.signedUrl ?? url
-}
-
-export default async function DailiesPage() {
-  const now = new Date().toISOString()
+export default async function StoriesPage({ searchParams }: { searchParams: { view?: string; page?: string } }) {
   const tz = await getAdminTZ()
+  const view = searchParams.view === "all" ? "all" : "live"
+  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10) || 1)
+  const now = new Date().toISOString()
 
-  const { data: dailies } = await supabase
+  let query = supabase
     .from("daily_posts")
     .select(`
-      id, content, image_url, created_at, expires_at, user_id,
-      profiles:user_id(username, display_name, avatar_url)
+      id, content, image_url, created_at, expires_at, user_id, shared_post_id,
+      profiles:user_id(username, display_name, avatar_url),
+      shared_post:shared_post_id(content, image_url, profiles:user_id(username))
     `)
-    .gt("expires_at", now)
     .order("created_at", { ascending: false })
+  if (view === "live") query = query.gt("expires_at", now)
+  else query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-  const rawRows = dailies || []
+  const [{ data: stories }, { count: liveCount }, { count: totalCount }, { count: chapterCount }] = await Promise.all([
+    query,
+    supabase.from("daily_posts").select("id", { count: "exact", head: true }).gt("expires_at", now),
+    supabase.from("daily_posts").select("id", { count: "exact", head: true }),
+    supabase.from("story_highlights").select("id", { count: "exact", head: true }),
+  ])
 
-  // Sign all image URLs in parallel so the browser can load them without bucket auth
-  const rows = await Promise.all(
-    rawRows.map(async (d) => ({
-      ...d,
-      signed_url: await signImageUrl(d.image_url),
-    }))
+  const rows = stories ?? []
+  const ids = rows.map(r => r.id)
+
+  // Which chapters each story is in (chapters are public on the profile).
+  const { data: chapterLinks } = ids.length
+    ? await supabase.from("story_highlight_items").select("daily_post_id, story_highlights(title)").in("daily_post_id", ids)
+    : { data: [] as any[] }
+  const chaptersByStory = new Map<string, string[]>()
+  for (const l of chapterLinks ?? []) {
+    const title = (l as any).story_highlights?.title
+    if (!title) continue
+    chaptersByStory.set(l.daily_post_id, [...(chaptersByStory.get(l.daily_post_id) ?? []), title])
+  }
+
+  const signed = await signPostsUrls(rows.flatMap(r => [r.image_url, firstImage((r as any).shared_post?.image_url)]))
+  const crisisCount = rows.filter(d => hasCrisis(parseStoryContent(d.content).text)).length
+  const totalPages = view === "all" ? Math.max(1, Math.ceil((totalCount ?? 0) / PAGE_SIZE)) : 1
+
+  const tab = (v: "live" | "all", label: string) => (
+    <Link
+      href={`/dailies?view=${v}`}
+      className={`px-4 py-2 rounded-xl text-sm font-bold transition ${
+        view === v ? "bg-[#e378ac] text-white" : "bg-[#1a1a1a] text-gray-400 hover:text-white border border-[#2a2a2a]"
+      }`}
+    >
+      {label}
+    </Link>
   )
-
-  const crisisCount = rows.filter(d => hasCrisis(parseContent(d.content).text)).length
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-black text-white mb-1">Dailies</h2>
+          <h2 className="text-2xl font-black text-white mb-1">Stories</h2>
           <p className="text-gray-500 text-sm">
-            {rows.length} active {rows.length === 1 ? "post" : "posts"} · all expire within 24h
+            {liveCount ?? 0} live (last 24h) · {totalCount ?? 0} kept in total · {chapterCount ?? 0} chapters
+          </p>
+          <p className="text-gray-600 text-xs mt-1">
+            Stories are kept forever. After 24h only the owner can see them, unless they&apos;re in one of the owner&apos;s Chapters.
           </p>
         </div>
         {crisisCount > 0 && (
@@ -128,26 +137,39 @@ export default async function DailiesPage() {
         )}
       </div>
 
+      <div className="flex gap-2 mb-5">
+        {tab("live", `Live (${liveCount ?? 0})`)}
+        {tab("all", `All (${totalCount ?? 0})`)}
+      </div>
+
       {rows.length === 0 ? (
-        <div className="text-center py-20 text-gray-600 text-sm">No active dailies right now.</div>
+        <div className="text-center py-20 text-gray-600 text-sm">
+          {view === "live" ? "No live stories right now." : "No stories yet."}
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {rows.map(daily => {
-            const { text, feeling, emoji, isUpdate } = parseContent(daily.content)
+          {rows.map(story => {
+            const { text, feeling, emoji, isUpdate } = parseStoryContent(story.content)
             const isCrisis = hasCrisis(text)
-            const profile = Array.isArray(daily.profiles) ? (daily.profiles as any[])[0] : daily.profiles as any
+            const profile = Array.isArray(story.profiles) ? (story.profiles as any[])[0] : story.profiles as any
             const displayName = profile?.display_name || profile?.username || "unknown"
             const username = profile?.username
+            const shared = (story as any).shared_post as any
+            const isRepost = !!story.shared_post_id
+            const photo = story.image_url ? signed.get(story.image_url) ?? null : null
+            const sharedImg = firstImage(shared?.image_url)
+            const sharedPhoto = sharedImg ? signed.get(sharedImg) ?? sharedImg : null
+            const left = timeLeft(story.expires_at)
+            const chapters = chaptersByStory.get(story.id) ?? []
 
             return (
               <div
-                key={daily.id}
+                key={story.id}
                 className={`bg-[#1a1a1a] rounded-2xl p-5 border transition ${
                   isCrisis ? "border-red-500/50 bg-red-500/5" : "border-[#2a2a2a]"
                 }`}
               >
                 <div className="flex items-start gap-4">
-                  {/* Avatar */}
                   <div className="flex-shrink-0">
                     {profile?.avatar_url ? (
                       <Image
@@ -164,17 +186,21 @@ export default async function DailiesPage() {
                     )}
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
-                    {/* Header row */}
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-white font-bold text-sm">{displayName}</span>
+                      <Link href={`/users/${story.user_id}`} className="text-white font-bold text-sm hover:opacity-80">{displayName}</Link>
                       {username && <span className="text-gray-500 text-xs">@{username}</span>}
                       {isUpdate && (
-                        <span className="bg-[#e378ac] text-white text-[10px] font-black px-2 py-0.5 rounded-full tracking-wide">
-                          UPDATE
-                        </span>
+                        <span className="bg-[#e378ac] text-white text-[10px] font-black px-2 py-0.5 rounded-full tracking-wide">UPDATE</span>
                       )}
+                      {isRepost && (
+                        <span className="bg-sky-400/10 text-sky-300 text-[10px] font-black px-2 py-0.5 rounded-full tracking-wide border border-sky-400/20">REPOST</span>
+                      )}
+                      {chapters.map(c => (
+                        <span key={c} className="bg-amber-400/10 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-400/20" title="Public on their profile">
+                          📖 {c}
+                        </span>
+                      ))}
                       {isCrisis && (
                         <span className="bg-red-500/20 text-red-400 text-[10px] font-black px-2 py-0.5 rounded-full border border-red-500/40 tracking-wide">
                           ⚠️ CRISIS
@@ -182,14 +208,10 @@ export default async function DailiesPage() {
                       )}
                     </div>
 
-                    {/* Text body */}
                     {text ? (
-                      <p className={`text-sm leading-relaxed mb-2 ${isCrisis ? "text-red-300" : "text-gray-200"}`}>
-                        {text}
-                      </p>
+                      <p className={`text-sm leading-relaxed mb-2 ${isCrisis ? "text-red-300" : "text-gray-200"}`}>{text}</p>
                     ) : null}
 
-                    {/* Feeling strip (update posts) */}
                     {isUpdate && (feeling || emoji) && (
                       <p className="text-xs text-gray-400 mb-2">
                         <span className="text-[#e378ac] font-bold uppercase tracking-wider text-[10px]">Feeling: </span>
@@ -197,12 +219,25 @@ export default async function DailiesPage() {
                       </p>
                     )}
 
-                    {/* Photo */}
-                    {daily.signed_url && (
-                      <a href={daily.signed_url} target="_blank" rel="noopener noreferrer" className="block mt-2 mb-2">
+                    {isRepost && (
+                      <div className="mt-1 mb-2 flex items-start gap-3 bg-black/30 border border-[#2a2a2a] rounded-xl p-3 max-w-md">
+                        {sharedPhoto && (
+                          <Image src={sharedPhoto} alt="reposted post" width={56} height={56} className="w-14 h-14 rounded-lg object-cover" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 mb-0.5">
+                            {shared ? `Reposted @${shared.profiles?.username ?? "user"}'s post` : "Reposted post (since deleted)"}
+                          </p>
+                          {shared?.content && <p className="text-sm text-gray-300 line-clamp-2">{shared.content}</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {photo && (
+                      <a href={photo} target="_blank" rel="noopener noreferrer" className="block mt-2 mb-2">
                         <Image
-                          src={daily.signed_url}
-                          alt="daily photo"
+                          src={photo}
+                          alt="story photo"
                           width={320}
                           height={288}
                           className="max-h-72 max-w-xs rounded-2xl object-cover border border-[#2a2a2a] hover:opacity-90 transition"
@@ -211,18 +246,17 @@ export default async function DailiesPage() {
                       </a>
                     )}
 
-                    {/* Meta */}
                     <div className="flex items-center gap-3 text-[11px] text-gray-600 mt-1">
-                      <span>{fmtDate(daily.created_at, tz)} · {fmtTime(daily.created_at, tz)}</span>
+                      <span>{fmtDate(story.created_at, tz)} · {fmtTime(story.created_at, tz)}</span>
                       <span className="text-gray-700">·</span>
-                      <span>{timeLeft(daily.expires_at)}</span>
+                      <span>{left ?? (chapters.length ? "expired · public in a chapter" : "expired · archive (owner only)")}</span>
                     </div>
                   </div>
 
-                  {/* Delete */}
-                  <form action={deleteDaily.bind(null, daily.id, daily.image_url)}>
+                  <form action={removeStory.bind(null, story.id)}>
                     <button
                       type="submit"
+                      title={chapters.length ? `Also removes it from: ${chapters.join(", ")}` : "Deletes the story and its photo"}
                       className="text-xs text-gray-600 hover:text-red-400 transition px-3 py-1.5 rounded-lg hover:bg-red-400/10 border border-transparent hover:border-red-400/20 whitespace-nowrap"
                     >
                       Delete
@@ -232,6 +266,18 @@ export default async function DailiesPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {view === "all" && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-6 text-sm">
+          {page > 1 ? (
+            <Link href={`/dailies?view=all&page=${page - 1}`} className="px-4 py-2 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] text-gray-300 hover:text-white">← Newer</Link>
+          ) : <span className="px-4 py-2 text-gray-700">← Newer</span>}
+          <span className="text-gray-500">Page {page} of {totalPages}</span>
+          {page < totalPages ? (
+            <Link href={`/dailies?view=all&page=${page + 1}`} className="px-4 py-2 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] text-gray-300 hover:text-white">Older →</Link>
+          ) : <span className="px-4 py-2 text-gray-700">Older →</span>}
         </div>
       )}
     </div>

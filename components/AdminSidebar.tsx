@@ -9,7 +9,7 @@ const NAV = [
   { href: "/codes",        label: "Invite Codes",   icon: "🎟️" },
   { href: "/requests",     label: "Code Requests",  icon: "📬", countKey: "requests" },
   { href: "/posts",        label: "Posts",          icon: "🌸" },
-  { href: "/dailies",      label: "Dailies",        icon: "☀️" },
+  { href: "/dailies",      label: "Stories",        icon: "☀️" },
   { href: "/journal",      label: "Journal",        icon: "📓" },
   { href: "/communities",  label: "Communities",    icon: "🏘️" },
   { href: "/reports",      label: "Reports",        icon: "🚨", countKey: "reports" },

@@ -4,6 +4,8 @@ import SendEmailModal from "@/components/SendEmailModal"
 import SuspendModal from "@/components/SuspendModal"
 import { fmtDate, fmtDateTime, fmtTime, getAdminTZ } from "@/lib/date"
 import { supabase } from "@/lib/supabase"
+import { signPostsUrls, storagePathInPosts } from "@/lib/stories"
+import { purgeUserStorage } from "@/lib/userStorage"
 import { revalidatePath } from "next/cache"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
@@ -142,6 +144,9 @@ async function deleteUserAccount(userId: string) {
   "use server"
   // Delete unused invite codes first (used codes keep their referential history)
   await supabase.from("invite_codes").delete().eq("created_by", userId).is("used_by", null)
+  // Remove their uploaded files (stories, chapter covers, photos, voice notes)
+  const purge = await purgeUserStorage(userId)
+  if (purge.errors.length) console.error("deleteUserAccount: storage purge issues:", purge.errors)
   // Delete profile + all DB data (posts, follows, etc. cascade via FK)
   const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId)
   if (profileError) {
@@ -286,6 +291,39 @@ export default async function UserDetail({ params }: { params: { id: string } })
     await supabase.from("posts").delete().eq("id", postId)
     revalidatePath(`/users/${id}`)
     revalidatePath("/users")
+  }
+
+  // Chapters (story_highlights): public on their profile, so reviewable here.
+  const { data: chapterRows } = await supabase
+    .from("story_highlights")
+    .select("id, title, cover_url, cover_daily_post_id, created_at, story_highlight_items(daily_post_id, daily_posts(id, image_url))")
+    .eq("user_id", id)
+    .order("position", { ascending: true })
+  const chapters = (chapterRows ?? []).map(c => {
+    const stories = ((c as any).story_highlight_items ?? []).map((i: any) => i.daily_posts).filter(Boolean)
+    const coverStory = stories.find((s: any) => s.id === c.cover_daily_post_id) ?? stories[0]
+    return { id: c.id, title: c.title, created_at: c.created_at, storyCount: stories.length,
+      customCover: !!c.cover_url, cover: c.cover_url || coverStory?.image_url || null }
+  })
+  const chapterSigned = await signPostsUrls(chapters.map(c => c.cover))
+
+  const deleteChapter = async (chapterId: string) => {
+    "use server"
+    const { data: ch } = await supabase.from("story_highlights").select("cover_url").eq("id", chapterId).maybeSingle()
+    const coverPath = storagePathInPosts(ch?.cover_url)
+    if (coverPath) await supabase.storage.from("Posts").remove([coverPath])
+    // Stories stay in the user's archive; only the chapter goes.
+    await supabase.from("story_highlights").delete().eq("id", chapterId)
+    revalidatePath(`/users/${id}`)
+  }
+
+  const removeChapterCover = async (chapterId: string) => {
+    "use server"
+    const { data: ch } = await supabase.from("story_highlights").select("cover_url").eq("id", chapterId).maybeSingle()
+    const coverPath = storagePathInPosts(ch?.cover_url)
+    if (coverPath) await supabase.storage.from("Posts").remove([coverPath])
+    await supabase.from("story_highlights").update({ cover_url: null }).eq("id", chapterId)
+    revalidatePath(`/users/${id}`)
   }
 
   const deleteInviteCode = async (code: string) => {
@@ -586,6 +624,49 @@ export default async function UserDetail({ params }: { params: { id: string } })
             <span className="text-gray-600 text-sm">None selected</span>
           )}
         </div>
+      </div>
+
+      {/* Chapters (public on their profile) */}
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden mb-6">
+        <div className="px-5 py-4 border-b border-[#2a2a2a]">
+          <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Chapters · {chapters.length}</p>
+          <p className="text-gray-600 text-xs">Story collections shown on their profile. Deleting one keeps the stories in their archive.</p>
+        </div>
+        {chapters.length === 0 ? (
+          <p className="px-5 py-6 text-gray-600 text-sm">No chapters.</p>
+        ) : (
+          <div className="divide-y divide-[#222]">
+            {chapters.map(c => {
+              const cover = c.cover ? chapterSigned.get(c.cover) ?? c.cover : null
+              return (
+                <div key={c.id} className="px-5 py-3 flex items-center gap-4">
+                  {cover ? (
+                    <a href={cover} target="_blank" rel="noopener noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={cover} alt={c.title} className="w-12 h-12 rounded-full object-cover border border-[#333]" />
+                    </a>
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#2a2a2a] border border-[#333]" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold text-sm truncate">{c.title}</p>
+                    <p className="text-gray-600 text-xs">
+                      {c.storyCount} {c.storyCount === 1 ? "story" : "stories"} · {c.customCover ? "uploaded cover" : "cover from a story"} · created {fmtDate(c.created_at, tz)}
+                    </p>
+                  </div>
+                  {c.customCover && (
+                    <form action={removeChapterCover.bind(null, c.id)}>
+                      <button className="text-yellow-500/60 hover:text-yellow-400 text-xs font-bold transition whitespace-nowrap">Remove cover</button>
+                    </form>
+                  )}
+                  <form action={deleteChapter.bind(null, c.id)}>
+                    <button className="text-red-400/50 hover:text-red-400 text-xs font-bold transition">Delete</button>
+                  </form>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Invite code history */}

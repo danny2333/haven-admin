@@ -1,6 +1,7 @@
 import ReportCard from "@/components/ReportCard"
 import { fmtDate, fmtTime, getAdminTZ } from "@/lib/date"
 import { supabase } from "@/lib/supabase"
+import { parseStoryContent, signPostsUrls, storyIdFromReportContext } from "@/lib/stories"
 
 export const revalidate = 0
 
@@ -56,6 +57,39 @@ export default async function Reports() {
   const communityPostMap: Record<string, any> = {}
   for (const p of reportedCommunityPosts ?? []) communityPostMap[p.id] = { title: p.title ?? null, content: p.content ?? null, image_url: p.image_url ?? null, username: (p.profiles as any)?.username ?? null, community: (p.communities as any)?.name ?? null }
 
+  // Story reports carry the story id only in their context text.
+  const storyIdByReport = new Map<string, string>()
+  for (const r of reports ?? []) {
+    const sid = storyIdFromReportContext(r.context)
+    if (sid) storyIdByReport.set(r.id, sid)
+  }
+  const storyIds = [...new Set(storyIdByReport.values())]
+  const [{ data: reportedStories }, { data: storyChapterLinks }] = storyIds.length
+    ? await Promise.all([
+        supabase.from("daily_posts").select("id, content, image_url, created_at, shared_post_id").in("id", storyIds),
+        supabase.from("story_highlight_items").select("daily_post_id, story_highlights(title)").in("daily_post_id", storyIds),
+      ])
+    : [{ data: [] as any[] }, { data: [] as any[] }]
+  const storySigned = await signPostsUrls((reportedStories ?? []).map(s => s.image_url))
+  const storyMap: Record<string, any> = {}
+  for (const s of reportedStories ?? []) {
+    storyMap[s.id] = {
+      id: s.id,
+      text: parseStoryContent(s.content).text,
+      image_url: s.image_url ? storySigned.get(s.image_url) ?? s.image_url : null,
+      created_at: s.created_at,
+      isRepost: !!s.shared_post_id,
+      chapters: (storyChapterLinks ?? [])
+        .filter((l: any) => l.daily_post_id === s.id && l.story_highlights?.title)
+        .map((l: any) => l.story_highlights.title),
+    }
+  }
+  const storyFor = (reportId: string) => {
+    const sid = storyIdByReport.get(reportId)
+    if (!sid) return null
+    return storyMap[sid] ?? { id: sid, text: "", image_url: null, created_at: "", isRepost: false, chapters: [], missing: true }
+  }
+
   const PRIORITY_ORDER: Record<string, number> = { p0: 0, p1: 1, p2: 2, p3: 3 }
   const pending  = (reports?.filter(r => !r.status || r.status === "pending") ?? [])
     .sort((a, b) => (PRIORITY_ORDER[a.priority ?? "p2"] ?? 2) - (PRIORITY_ORDER[b.priority ?? "p2"] ?? 2))
@@ -110,6 +144,7 @@ export default async function Reports() {
                 messageContent={r.reported_message_id ? messageMap[r.reported_message_id] ?? null : null}
                 communityPostContent={r.reported_community_post_id ? communityPostMap[r.reported_community_post_id] ?? null : null}
                 replyContent={replyContent}
+                storyContent={storyFor(r.id)}
               />
             )
           })}

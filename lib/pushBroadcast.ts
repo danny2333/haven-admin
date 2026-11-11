@@ -30,7 +30,12 @@ export async function broadcastPush(
     data,
   }))
 
+  // push_tokens has one row per device, so a person on two phones gets it on both.
+  // "sent" counts Expo's per-message "ok" tickets, not just a 200 for the batch;
+  // tokens Expo reports as DeviceNotRegistered (app deleted / notifications
+  // revoked) are removed so they stop inflating the totals.
   let sent = 0
+  const dead: string[] = []
   for (let i = 0; i < messages.length; i += CHUNK_SIZE) {
     const chunk = messages.slice(i, i + CHUNK_SIZE)
     try {
@@ -39,10 +44,19 @@ export async function broadcastPush(
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(chunk),
       })
-      if (res.ok) sent += chunk.length
+      if (!res.ok) continue
+      const json = await res.json().catch(() => null)
+      const tickets: any[] = Array.isArray(json?.data) ? json.data : []
+      tickets.forEach((t, j) => {
+        if (t?.status === "ok") sent += 1
+        else if (t?.details?.error === "DeviceNotRegistered") dead.push(chunk[j].to)
+      })
     } catch {
       // Keep going with remaining chunks even if one batch fails
     }
+  }
+  if (dead.length) {
+    await supabase.from("push_tokens").delete().in("token", dead)
   }
 
   return { sent, total: messages.length }

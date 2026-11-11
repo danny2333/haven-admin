@@ -11,16 +11,20 @@ const STATUS_COLOR: Record<string, string> = {
 export default async function SystemHealthPage() {
   const tz = await getAdminTZ()
 
-  const [{ count: totalProfiles }, { count: withToken }, { data: jobs }] = await Promise.all([
+  // push_tokens has one row per DEVICE (a person can be signed in on several
+  // phones), so count distinct users for reach and show devices separately.
+  const [{ count: totalProfiles }, { data: tokenRows }, { data: jobs }] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
-    supabase.from("push_tokens").select("user_id", { count: "exact", head: true }),
+    supabase.from("push_tokens").select("user_id").limit(100000),
     supabase
       .from("cron_job_status")
       .select("jobid, jobname, schedule, active, last_status, last_run_at, last_return_message")
       .order("jobname"),
   ])
 
-  const pushPct = totalProfiles ? Math.round(((withToken ?? 0) / totalProfiles) * 100) : 0
+  const deviceCount = tokenRows?.length ?? 0
+  const withToken = new Set((tokenRows ?? []).map(r => r.user_id)).size
+  const pushPct = totalProfiles ? Math.round((withToken / totalProfiles) * 100) : 0
 
   return (
     <div>
@@ -38,8 +42,9 @@ export default async function SystemHealthPage() {
             <p className="text-xs text-gray-500 uppercase tracking-wide font-bold">Total Users</p>
           </div>
           <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-5">
-            <p className="text-3xl font-black text-white mb-1">{withToken ?? 0}</p>
+            <p className="text-3xl font-black text-white mb-1">{withToken}</p>
             <p className="text-xs text-gray-500 uppercase tracking-wide font-bold">Have Push Enabled</p>
+            <p className="text-xs text-gray-600 mt-1">{deviceCount} {deviceCount === 1 ? "device" : "devices"}</p>
           </div>
           <div className={`rounded-2xl p-5 border ${pushPct < 50 ? "bg-red-500/5 border-red-500/30" : "bg-[#1a1a1a] border-[#2a2a2a]"}`}>
             <p className={`text-3xl font-black mb-1 ${pushPct < 50 ? "text-red-400" : "text-white"}`}>{pushPct}%</p>
@@ -95,7 +100,8 @@ export default async function SystemHealthPage() {
         </div>
         <p className="text-xs text-gray-600 mt-3">
           Jobs that call Expo's push API directly (invite-code reminders, weekly recap) don't write to push_send_log —
-          that table only captures sends made through the app's send-push edge function. "Succeeded" here means the
+          that table only captures sends made through the send-push and fanout-push edge functions (new post/story/circle
+          post pushes now go out server-side through fanout-push). Stories are kept forever, so there&apos;s no story-cleanup job. "Succeeded" here means the
           SQL ran without error, not that every push was necessarily delivered.
         </p>
       </div>
